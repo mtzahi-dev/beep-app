@@ -316,7 +316,7 @@ function cleanForSpeech(s) {
 }
 
 // לקסיקון הגייה: מילים שמנועי TTS בעברית נוטים לשבש — מוחלפות בכתיב מנוקד מלא,
-// כדי שההגייה (כולל מלעיל/מלרע) תיגזר מהניקוד הנכון. מורחב לפי הצורך.
+// כדי שההגייה תיגזר מהניקוד הנכון. רק לקול הדפדפן — קול הענן משבש טקסט מנוקד.
 const HEB_FIX = [
   ["בית הספר", "בֵּית הַסֵּפֶר"],
   ["בית ספר", "בֵּית סֵפֶר"],
@@ -354,6 +354,7 @@ const serverTtsReady = fetch(TTS_API)
 
 // מטמון קבוע בדפדפן: משפט שכבר נשמע נטען מיד בפעם הבאה — בלי המתנה, בלי רשת ובלי עלות
 const TTS_DISK = "beep-tts-v1";
+try { window.caches && caches.delete("beep-tts-v2"); } catch {} // שמע מנוקד מגרסת ניסיון שנפסלה
 const TTS_DISK_MAX = 1500;
 let diskPuts = 0;
 
@@ -490,6 +491,7 @@ function cloudSpeak(text, lang, opts = {}) {
 function webSpeakRaw(text, lang) {
   try {
     if (!window.speechSynthesis) return;
+    if (lang === "he") for (const [from, to] of HEB_FIX) text = text.split(from).join(to);
     const u = new SpeechSynthesisUtterance(text);
     if (lang === "he") {
       u.lang = "he-IL";
@@ -525,7 +527,7 @@ function mathToHebrew(s) {
 function speakHe(text, opts = {}) {
   if (MUTED || !SPEECH_ON) return;
   let t = String(text);
-  for (const [from, to] of HEB_FIX) t = t.split(from).join(to);
+  t = t.replace(/[\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7]/g, ""); // קול הענן משבש טקסט מנוקד
   t = cleanForSpeech(numbersToHebrew(mathToHebrew(t)));
   if (!/[0-9A-Za-z\u0590-\u05FF]/.test(t)) return; // רק סימנים ואימוג'ים — אין מה להקריא
   if (cloudSpeak(t, "he", opts)) return;
