@@ -353,7 +353,8 @@ const serverTtsReady = fetch(TTS_API)
   });
 
 // מטמון קבוע בדפדפן: משפט שכבר נשמע נטען מיד בפעם הבאה — בלי המתנה, בלי רשת ובלי עלות
-const TTS_DISK = "beep-tts-v1";
+const TTS_DISK = "beep-tts-v2"; // v2: הקראה עם ניקוד — שמע ישן בלי ניקוד נמחק
+try { window.caches && caches.delete("beep-tts-v1"); } catch {}
 const TTS_DISK_MAX = 1500;
 let diskPuts = 0;
 

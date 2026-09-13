@@ -4,6 +4,7 @@
 //   POST { text, lang: "he"|"en", voice } → audio/mpeg
 
 import { synthesize, listVoices, defaultVoice, MAX_TTS_CHARS } from "../src/ttsProviders.js";
+import { addNiqqud } from "./niqqud.js";
 
 function configFromEnv(env) {
   const googleKey = (env.GOOGLE_TTS_KEY || "").trim();
@@ -58,8 +59,20 @@ export async function handleTts(method, rawBody, env) {
   if (!text || text.length > MAX_TTS_CHARS) return json(400, { error: "bad text length" });
 
   try {
-    const audio = await synthesize(cfg, { text, lang, voice: req.voice || defaultVoice(cfg.provider) });
-    return { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" }, body: audio };
+    // עברית: ניקוד מלא לפני ההקראה, כדי שההגייה תהיה לפי כללי הניקוד (אפשר לכבות: TTS_NIQQUD=0)
+    let spoken = text;
+    let niqqud = "off";
+    if (lang === "he" && (env.TTS_NIQQUD || "1") !== "0") {
+      const r = await addNiqqud(text);
+      spoken = r.text;
+      niqqud = r.applied ? "1" : "fallback";
+    }
+    const audio = await synthesize(cfg, { text: spoken, lang, voice: req.voice || defaultVoice(cfg.provider) });
+    return {
+      status: 200,
+      headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store", "X-TTS-Niqqud": niqqud },
+      body: audio,
+    };
   } catch (e) {
     // לא רושמים את הטקסט עצמו (עשוי לכלול את שם הילד)
     console.error("tts:", e.message);
