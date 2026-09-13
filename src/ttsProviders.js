@@ -15,12 +15,12 @@ export const AZURE_VOICES = {
 };
 
 export function defaultVoice(provider) {
-  return provider === "azure" ? "Hila" : "Leda";
+  return provider === "azure" ? "Hila" : "Charon";
 }
 
 export function cleanVoice(provider, voice) {
   if (provider === "azure") return AZURE_VOICES[voice] ? voice : "Hila";
-  return /^[A-Za-z]{2,24}$/.test(voice || "") ? voice : "Leda";
+  return /^[A-Za-z]{2,24}$/.test(voice || "") ? voice : "Charon";
 }
 
 async function errDetail(res) {
