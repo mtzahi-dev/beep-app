@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { synthesize, cleanVoice, defaultVoice } from "./ttsProviders.js";
 
 /* ─────────────────────────  בִּיפּ · לומדים בצעדים קטנים  ─────────────────────────
    אב-טיפוס: אפליקציית לימוד לילדים עם קשיי קשב וריכוז (כיתות א'-ט')
@@ -329,56 +330,92 @@ const HEB_FIX = [
   ["רבע", "רֶבַע"],
 ];
 
-// ---------- TTS ענן: קול טבעי אמיתי (Google Cloud / Microsoft Azure) ----------
-// מוגדר מאזור ההורים; המפתח נשמר במכשיר בלבד. בלי מפתח — נופלים לקול הדפדפן.
+// ---------- קול טבעי (ענן) ----------
+// ברירת מחדל: שרת הקריינות של ביפ (פונקציית Netlify, ובפיתוח — שרת Vite). המפתח שמור בשרת בלבד,
+// כך שכל מכשיר מקבל קול טבעי בלי הגדרות. אפשרות מתקדמת: מפתח פרטי במכשיר (אזור ההורים).
+// בכל כשל — נפילה שקטה לקול הדפדפן.
 
-let TTS_CFG = null; // { provider: "google"|"azure", key, region }
-const ttsCache = new Map(); // טקסט → כתובת שמע (חוסך קריאות רשת ועלות)
+const TTS_API = "/.netlify/functions/tts";
+let TTS_CFG = null; // מפתח פרטי במכשיר: { provider: "google"|"azure", key, region }
+let SERVER_TTS = null; // מצב השרת: { enabled, provider, voices: [{ id, gender }], defaultVoice, error }
+let TTS_VOICE = null; // הקול שנבחר באזור ההורים (lomi:voice)
+const ttsCache = new Map(); // מפתח → כתובת שמע בזיכרון
 
-async function fetchTTS(text, lang) {
-  const cfg = TTS_CFG;
-  if (!cfg || !cfg.key) throw new Error("no key");
-  const cacheKey = cfg.provider + "|" + (cfg.region || "") + "|" + lang + "|" + text;
+const serverTtsReady = fetch(TTS_API)
+  .then((r) => (r.ok ? r.json() : null))
+  .catch(() => null)
+  .then((st) => {
+    SERVER_TTS = st && typeof st.enabled === "boolean" ? st : { enabled: false };
+    if (!SERVER_TTS.voices) SERVER_TTS.voices = [];
+    return SERVER_TTS.enabled;
+  });
+
+// מטמון קבוע בדפדפן: משפט שכבר נשמע נטען מיד בפעם הבאה — בלי המתנה, בלי רשת ובלי עלות
+const TTS_DISK = "beep-tts-v1";
+const TTS_DISK_MAX = 1500;
+let diskPuts = 0;
+
+async function diskReq(k) {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(k));
+  const hex = Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
+  return new Request(location.origin + "/__tts/" + hex);
+}
+
+async function diskGet(k) {
+  try {
+    if (!window.caches || !window.crypto || !crypto.subtle) return null;
+    const c = await caches.open(TTS_DISK);
+    const r = await c.match(await diskReq(k));
+    return r ? await r.blob() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function diskPut(k, blob) {
+  try {
+    if (!window.caches || !window.crypto || !crypto.subtle) return;
+    const c = await caches.open(TTS_DISK);
+    await c.put(await diskReq(k), new Response(blob, { headers: { "Content-Type": "audio/mpeg" } }));
+    if (++diskPuts % 50 === 0) {
+      const keys = await c.keys();
+      for (const old of keys.slice(0, Math.max(0, keys.length - TTS_DISK_MAX))) await c.delete(old);
+    }
+  } catch {}
+}
+
+async function fetchTTS(text, lang, voice) {
+  const device = TTS_CFG && TTS_CFG.key ? TTS_CFG : null;
+  if (!device && !(await serverTtsReady)) throw new Error("no tts");
+  const provider = device ? device.provider : SERVER_TTS.provider;
+  let wanted = voice || TTS_VOICE;
+  if (!device && !SERVER_TTS.voices.some((x) => x.id === wanted)) wanted = SERVER_TTS.defaultVoice;
+  const v = cleanVoice(provider, wanted || defaultVoice(provider));
+  const cacheKey = provider + "|" + v + "|" + lang + "|" + text;
   if (ttsCache.has(cacheKey)) return ttsCache.get(cacheKey);
-  let url;
-  if (cfg.provider === "azure") {
-    // הקולות העבריים הטבעיים הטובים ביותר: Hila / Avri Neural
-    const region = cfg.region || "westeurope";
-    const voice = lang === "he" ? "he-IL-HilaNeural" : "en-US-JennyNeural";
-    const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const ssml = `<speak version='1.0' xml:lang='${lang === "he" ? "he-IL" : "en-US"}'><voice name='${voice}'><prosody rate='-12%'>${esc}</prosody></voice></speak>`;
-    const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": cfg.key,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
-      },
-      body: ssml,
-    });
-    if (!res.ok) throw new Error("Azure " + res.status);
-    url = URL.createObjectURL(await res.blob());
-  } else {
-    const voice = lang === "he" ? "he-IL-Wavenet-A" : "en-US-Wavenet-F";
-    const res = await fetch(
-      "https://texttospeech.googleapis.com/v1/text:synthesize?key=" + encodeURIComponent(cfg.key),
-      {
+  let blob = await diskGet(cacheKey);
+  if (!blob) {
+    if (device) {
+      blob = new Blob([await synthesize(device, { text, lang, voice: v })], { type: "audio/mpeg" });
+    } else {
+      const res = await fetch(TTS_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input: { text },
-          voice: { languageCode: lang === "he" ? "he-IL" : "en-US", name: voice },
-          audioConfig: { audioEncoding: "MP3", speakingRate: lang === "he" ? 0.88 : 0.85 },
-        }),
+        body: JSON.stringify({ text, lang, voice: v }),
+      });
+      if (!res.ok) {
+        let msg = "TTS " + res.status;
+        try {
+          const j = await res.json();
+          if (j && j.error) msg += ": " + j.error;
+        } catch {}
+        throw new Error(msg);
       }
-    );
-    if (!res.ok) throw new Error("Google " + res.status);
-    const data = await res.json();
-    const bin = atob(data.audioContent);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+      blob = await res.blob();
+    }
+    diskPut(cacheKey, blob);
   }
+  const url = URL.createObjectURL(blob);
   if (ttsCache.size > 150) ttsCache.delete(ttsCache.keys().next().value);
   ttsCache.set(cacheKey, url);
   return url;
@@ -388,8 +425,10 @@ async function fetchTTS(text, lang) {
 let audioQ = [];
 let curAudio = null;
 let audioBusy = false;
+let audioGen = 0; // עולה בכל עצירה — מבטל שמע שהגיע באיחור
 
 function stopAllSpeech() {
+  audioGen++;
   audioQ = [];
   if (curAudio) {
     try { curAudio.pause(); } catch {}
@@ -402,31 +441,42 @@ function stopAllSpeech() {
 function pumpAudio() {
   if (audioBusy || !audioQ.length) return;
   audioBusy = true;
+  const gen = audioGen;
   const item = audioQ.shift();
   item.p.then((url) => {
+    if (gen !== audioGen) return; // בינתיים עברו הלאה — לא משמיעים משפט ישן
+    let done = false;
+    const next = () => {
+      if (done || gen !== audioGen) return;
+      done = true;
+      audioBusy = false;
+      curAudio = null;
+      pumpAudio();
+    };
     if (!url) {
       // הענן נכשל — נופלים לקול הדפדפן עבור המשפט הזה
-      audioBusy = false;
       webSpeakRaw(item.text, item.lang);
-      pumpAudio();
+      next();
       return;
     }
     const a = new Audio(url);
     curAudio = a;
-    a.onended = () => { audioBusy = false; curAudio = null; pumpAudio(); };
-    a.onerror = () => { audioBusy = false; curAudio = null; pumpAudio(); };
-    a.play().catch(() => { audioBusy = false; curAudio = null; pumpAudio(); });
+    a.onended = next;
+    a.onerror = next;
+    a.play().catch(next);
   });
 }
 
 function cloudSpeak(text, lang, opts = {}) {
-  if (!TTS_CFG || !TTS_CFG.key) return false;
+  const device = TTS_CFG && TTS_CFG.key;
+  if (!device && SERVER_TTS && !SERVER_TTS.enabled) return false; // אין קול ענן — קול הדפדפן
   if (!opts.queue) stopAllSpeech();
   audioQ.push({
     text,
     lang,
     p: fetchTTS(text, lang).catch((e) => {
-      console.warn("cloud TTS:", e && e.message ? e.message : e);
+      const m = e && e.message ? e.message : String(e);
+      if (m !== "no tts") console.warn("cloud TTS:", m);
       return null;
     }),
   });
@@ -1588,6 +1638,8 @@ export default function App() {
   const [ttsKey, setTtsKey] = useState("");
   const [ttsRegion, setTtsRegion] = useState("");
   const [ttsStatus, setTtsStatus] = useState("");
+  const [ttsVoice, setTtsVoice] = useState(null);
+  const [serverTts, setServerTts] = useState(null);
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState(false);
   const [kidSel, setKidSel] = useState(0);
@@ -1689,6 +1741,12 @@ export default function App() {
           }
         } catch {}
       }
+      const vc = await storGet("lomi:voice");
+      if (vc) {
+        TTS_VOICE = vc;
+        setTtsVoice(vc);
+      }
+      serverTtsReady.then(() => setServerTts({ ...SERVER_TTS }));
       const cur = await storGet(CURRENT_KEY);
       const p = us.find((u) => u.id === cur);
       if (p) {
@@ -2195,7 +2253,25 @@ export default function App() {
     setScreen(profile ? "home" : "users");
   }
 
-  // שמירת חיבור קול הענן + בדיקת השמעה מיידית
+  // בחירת הקול של ביפ + השמעת דוגמה (גם כשההקראה מושתקת — ההורה ביקש לשמוע)
+  async function pickVoice(id) {
+    sfx.click();
+    TTS_VOICE = id;
+    setTtsVoice(id);
+    await storSet("lomi:voice", id);
+    stopAllSpeech();
+    setTtsStatus("");
+    try {
+      const url = await fetchTTS("היי! אני בִּיפּ, הרובוט שלומד איתכם. ככה אני נשמע — נעים להכיר!", "he", id);
+      stopAllSpeech();
+      curAudio = new Audio(url);
+      curAudio.play().catch(() => {});
+    } catch (e) {
+      setTtsStatus("❌ לא הצלחתי להשמיע את הקול (" + (e && e.message ? e.message : "שגיאה") + ")");
+    }
+  }
+
+  // שמירת מפתח קול פרטי למכשיר + בדיקת השמעה מיידית
   async function saveTts() {
     sfx.click();
     const cfg = { provider: ttsProvider, key: ttsKey.trim(), region: ttsRegion.trim() };
@@ -2204,7 +2280,11 @@ export default function App() {
     stopAllSpeech();
     if (!cfg.key) {
       TTS_CFG = null;
-      setTtsStatus("אין מפתח — האפליקציה משתמשת בקול המובנה של הדפדפן.");
+      setTtsStatus(
+        SERVER_TTS && SERVER_TTS.enabled
+          ? "המפתח הפרטי הוסר — בִּיפּ חוזר לקול הטבעי של השרת."
+          : "אין מפתח — האפליקציה משתמשת בקול המובנה של הדפדפן."
+      );
       return;
     }
     TTS_CFG = cfg;
@@ -2493,6 +2573,9 @@ export default function App() {
       .kidtabs { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:12px; }
       .psec { margin-top:18px; }
       .psec h3 { font-size:16px; font-weight:800; margin-bottom:8px; color:var(--purple-d); }
+      .chip.voice { padding:9px 12px; direction:ltr; }
+      .ttsadv { margin-top:14px; }
+      .ttsadv summary { cursor:pointer; font-size:14px; font-weight:700; color:var(--purple-d); }
       .pgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
       .pbox { background:#FAFCFF; border:2px solid var(--line); border-radius:14px; padding:10px 12px;
         font-size:13px; font-weight:600; text-align:center; color:var(--sub); }
@@ -3032,40 +3115,70 @@ export default function App() {
           </div>
         )}
         <div className="psec">
-          <h3>🎙️ קול טבעי להקראה (חיבור לשרת דיבור)</h3>
-          <p className="sub">
-            הקול המובנה של הדפדפן מוגבל ורובוטי. חיבור לשירות ענן נותן קול עברי טבעי והגייה
-            נכונה לפי ניקוד. המפתח נשמר במכשיר הזה בלבד ולא נשלח לאף אחד מלבד ספק הקול.
-          </p>
-          <div className="kidtabs">
-            <button
-              className={"chip" + (ttsProvider === "google" ? " on" : "")}
-              onClick={() => { sfx.click(); setTtsProvider("google"); }}
-            >
-              Google Cloud
-            </button>
-            <button
-              className={"chip" + (ttsProvider === "azure" ? " on" : "")}
-              onClick={() => { sfx.click(); setTtsProvider("azure"); }}
-            >
-              Microsoft Azure
-            </button>
-          </div>
-          <input
-            className="input tts"
-            placeholder="API Key — הדביקו כאן את המפתח"
-            value={ttsKey}
-            onChange={(e) => setTtsKey(e.target.value)}
-          />
-          {ttsProvider === "azure" && (
+          <h3>🎙️ הקול של בִּיפּ</h3>
+          {serverTts === null ? (
+            <p className="sub">בודק את שרת הקול... ⏳</p>
+          ) : serverTts.enabled ? (
+            <>
+              <p className="sub">
+                קול טבעי פעיל ✅ לחצו על קול כדי לשמוע דוגמה — הקול שתבחרו ילווה את כל ההקראות.
+              </p>
+              <div className="kidtabs">
+                {serverTts.voices.map((v) => {
+                  const cur = serverTts.voices.some((x) => x.id === ttsVoice) ? ttsVoice : serverTts.defaultVoice;
+                  return (
+                    <button
+                      key={v.id}
+                      className={"chip voice" + (cur === v.id ? " on" : "")}
+                      onClick={() => pickVoice(v.id)}
+                    >
+                      {v.gender === "MALE" ? "👨" : "👩"} {v.id}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="sub">
+              הקול הטבעי עוד לא הופעל בשרת, ולכן כרגע נשמע הקול המובנה של הדפדפן (רובוטי).
+              {serverTts.error ? " (" + serverTts.error + ")" : ""}
+            </p>
+          )}
+          <details className="ttsadv">
+            <summary>מתקדם: מפתח קול פרטי למכשיר הזה בלבד</summary>
+            <p className="sub">
+              עוקף את שרת הקול. המפתח נשמר במכשיר הזה בלבד ולא נשלח לאף אחד מלבד ספק הקול.
+            </p>
+            <div className="kidtabs">
+              <button
+                className={"chip" + (ttsProvider === "google" ? " on" : "")}
+                onClick={() => { sfx.click(); setTtsProvider("google"); }}
+              >
+                Google Cloud
+              </button>
+              <button
+                className={"chip" + (ttsProvider === "azure" ? " on" : "")}
+                onClick={() => { sfx.click(); setTtsProvider("azure"); }}
+              >
+                Microsoft Azure
+              </button>
+            </div>
             <input
               className="input tts"
-              placeholder="Region (למשל westeurope)"
-              value={ttsRegion}
-              onChange={(e) => setTtsRegion(e.target.value)}
+              placeholder="API Key — הדביקו כאן את המפתח"
+              value={ttsKey}
+              onChange={(e) => setTtsKey(e.target.value)}
             />
-          )}
-          <button className="btn" onClick={saveTts}>שמירה ובדיקת קול 🎙️</button>
+            {ttsProvider === "azure" && (
+              <input
+                className="input tts"
+                placeholder="Region (למשל westeurope)"
+                value={ttsRegion}
+                onChange={(e) => setTtsRegion(e.target.value)}
+              />
+            )}
+            <button className="btn" onClick={saveTts}>שמירה ובדיקת קול 🎙️</button>
+          </details>
           {ttsStatus && <p className="sub center">{ttsStatus}</p>}
         </div>
       </div>
