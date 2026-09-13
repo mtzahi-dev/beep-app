@@ -54,9 +54,42 @@ export function numberWords(n, gender = "f", noun = false) {
   return parts.join(" ");
 }
 
+// שברים: 1/2 → חצי, 3/4 → שלושה רבעים, 2/5 → שתי חמישיות
+const DENOMS = {
+  2: ["חצי", "חצאים", "m"], 3: ["שליש", "שלישים", "m"], 4: ["רבע", "רבעים", "m"], 5: ["חמישית", "חמישיות", "f"],
+  6: ["שישית", "שישיות", "f"], 7: ["שביעית", "שביעיות", "f"], 8: ["שמינית", "שמיניות", "f"], 9: ["תשיעית", "תשיעיות", "f"],
+  10: ["עשירית", "עשיריות", "f"],
+};
+export function fractionWords(n, d) {
+  const D = DENOMS[d];
+  if (!D || n <= 0) return `${numberWords(n)} חלקי ${numberWords(d)}`;
+  return n === 1 ? D[0] : `${numberWords(n, D[2], true)} ${D[1]}`;
+}
+
+// סימנים מתמטיים שקול הענן לא יודע לקרוא בעברית
+const VAR_NAMES = { x: "איקס", y: "וואי", a: "איי", b: "בי" };
+const SUP_WORDS = { "²": "בריבוע", "³": "בחזקת שלוש", "⁴": "בחזקת ארבע", "⁵": "בחזקת חמש", "⁶": "בחזקת שש" };
+function mathSymbolsToHebrew(s) {
+  return s
+    .replace(/(\d)([xy])(?![A-Za-z])/g, (m, d, v) => `${d} ${VAR_NAMES[v]}`)
+    .replace(/(?<![A-Za-z])([xy])(?![A-Za-z])/g, (m, v) => VAR_NAMES[v])
+    .replace(/(\d)([ab])(?![A-Za-z])/g, (m, d, v) => `${d} ${VAR_NAMES[v]}`)
+    .replace(/(?<![A-Za-z])([ab])(?=\s*(?:=|שווה)\s*\d)/g, (m, v) => VAR_NAMES[v])
+    .replace(/√\s*/g, "שורש של ")
+    .replace(/([²³⁴⁵⁶])/g, (m, s2) => ` ${SUP_WORDS[s2]}`)
+    .replace(/≈/g, " בערך ")
+    .replace(/°/g, " מעלות")
+    .replace(/_{2,}\s*\/\s*(\d+)/g, "כמה חלקי $1")
+    .replace(/(\d+):(\d+)/g, "$1 ל-$2")
+    .replace(/(^|[\s(=,])[−-](?=\d)/g, "$1מינוס ")
+    .replace(/(^|[^\d/.])(\d{1,3})\/(\d{1,3})(?![\d/])/g, (m, pre, n, d) => pre + fractionWords(+n, +d))
+    .replace(/(\d+)\.(\d+)/g, (m, i, f) =>
+      `${numberWords(+i)} נקודה ${f.startsWith("0") ? f.split("").map((x) => numberWords(+x)).join(" ") : numberWords(+f)}`);
+}
+
 // מחליף כל מספר בטקסט עברי במילים: "12 סוכריות" → "שתים עשרה סוכריות", "ו-3 חברים" → "ושלושה חברים"
 export function numbersToHebrew(text) {
-  return String(text)
+  return mathSymbolsToHebrew(String(text))
     .replace(/(\d+)\s*%/g, "$1 אחוז")
     .replace(/(^|[^א-ת\d])([והבלמשכ]{1,2})?-?(\d{1,6})(?![\d.,]\d)(\s+([א-ת֑-ׇ]+))?/g,
       (all, pre, prefix, digits, gap, next) => {

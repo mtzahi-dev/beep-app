@@ -30,7 +30,7 @@ export function ArrayScene({ sc, playing, playKey }) {
 }
 
 // מספר כקוביות: מאות (לוח), עשרות (מקל), יחידות (קובייה)
-function BlockNum({ n, x, lit }) {
+export function BlockNum({ n, x, lit }) {
   const h = Math.floor(n / 100);
   const t = Math.floor((n % 100) / 10);
   const o = n % 10;
@@ -53,7 +53,7 @@ export function Blocks({ sc, playing, playKey }) {
     return (
       <>
         <BlockNum n={a} x={26} />
-        <Spr e={op === "+" ? "➕" : "➖"} x={52} y={40} s={0.7} cls="pop" />
+        <Spr e={op === "+" ? "➕" : "➖"} x={52} y={40} w={9} h={18} cls="pop" />
         <BlockNum n={b} x={76} />
       </>
     );
@@ -103,7 +103,7 @@ export function Compare({ sc, playing, playKey }) {
       <div className="spie sm" style={{ left: "75%" }}><PieSvg parts={right} take={beat >= 1 ? 1 : 0} /></div>
       <Badge x={25} y={92} text={`1/${left}`} />
       <Badge x={75} y={92} text={`1/${right}`} />
-      <Spr e={left < right ? "▶️" : "◀️"} x={50} y={45} s={0.8} cls={beat >= 2 ? "pop" : "gone"} />
+      <Spr e={left < right ? "▶️" : "◀️"} x={50} y={45} w={10} h={20} cls={beat >= 2 ? "pop" : "gone"} />
     </>
   );
 }

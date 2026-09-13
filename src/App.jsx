@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { synthesize, cleanVoice, defaultVoice } from "./ttsProviders.js";
 import { numbersToHebrew } from "./hebNumbers.js";
 import { Scene, SceneOverlay, sceneFor, registerWords } from "./Scenes.jsx";
+import "./app.css";
+import { TOPICS, inGrade, gradeLabel, TOPIC_ALIASES } from "./curriculum/topics.js";
+import { practiceFor, mixPractice } from "./curriculum/practice.js";
+import { addToBank } from "./curriculum/banks.js";
+import { mergeLessons } from "./curriculum/lessons.js";
+import { PHOTOS, PHOTO_CREDITS } from "./curriculum/photos.js";
+import { genMathTopic } from "./curriculum/mathGen.js";
 
 /* ─────────────────────────  בִּיפּ · לומדים בצעדים קטנים  ─────────────────────────
    אב-טיפוס: אפליקציית לימוד לילדים עם קשיי קשב וריכוז (כיתות א'-ט')
@@ -46,38 +53,6 @@ const SUBJECT_IDS = Object.keys(SUBJECTS);
 
 const PARENT_CODE = "1254";
 
-// נושאי לימוד לבחירה לפני כל שיעור — מסוננים לפי רמת הילד (min)
-const TOPICS = {
-  en: [
-    { id: "vocab", label: "אוצר מילים", emoji: "🧠", min: 1, ai: "vocabulary: word meanings, opposites, matching a word to an emoji picture" },
-    { id: "sent", label: "משפטים", emoji: "💬", min: 2, ai: "sentence building: fill-in-the-blank, correct word order, prepositions" },
-    { id: "tense", label: "זמנים", emoji: "⏰", min: 4, ai: "verb tenses fitting the level (present simple, past simple, etc.)" },
-    { id: "read", label: "קריאה", emoji: "📖", min: 5, ai: "short reading comprehension: a 1-2 line text with a question about it" },
-    { id: "mix", label: "הפתעה!", emoji: "🎲", min: 1, ai: "a fun varied mix of vocabulary, sentences and level-appropriate grammar" },
-  ],
-  math: [
-    { id: "add", label: "חיבור", emoji: "➕", min: 1 },
-    { id: "sub", label: "חיסור", emoji: "➖", min: 1 },
-    { id: "word", label: "בעיות בסיפור", emoji: "🧩", min: 2 },
-    { id: "mul", label: "כפל", emoji: "✖️", min: 3 },
-    { id: "div", label: "חילוק", emoji: "➗", min: 4 },
-    { id: "frac", label: "שברים", emoji: "🍕", min: 5 },
-    { id: "mix", label: "הפתעה!", emoji: "🎲", min: 1 },
-  ],
-  heb: [
-    { id: "story", label: "סיפורים", emoji: "📖", min: 1 },
-    { id: "info", label: "קטעי מידע", emoji: "📰", min: 3 },
-    { id: "infer", label: "בין השורות", emoji: "🕵️", min: 4 },
-    { id: "mix", label: "הפתעה!", emoji: "🎲", min: 1 },
-  ],
-  sci: [
-    { id: "animals", label: "בעלי חיים", emoji: "🐾", min: 1 },
-    { id: "plants", label: "צמחים", emoji: "🌱", min: 1 },
-    { id: "body", label: "גוף האדם", emoji: "🫀", min: 2 },
-    { id: "earth", label: "כדור הארץ והחלל", emoji: "🌍", min: 2 },
-    { id: "mix", label: "הפתעה!", emoji: "🎲", min: 1 },
-  ],
-};
 
 const PRAISE = ["מעולה! ✨", "בדיוק! 🎯", "אלוף! 🏆", "יש! 💥", "מושלם! 🌟", "כל הכבוד! 👏"];
 
@@ -258,6 +233,16 @@ const SCI_BANK = {
 
 // מאגרי שאלות לפי מקצוע (לאבחון ולתרגול)
 const SUBJECT_BANKS = { en: BANK, heb: HEB_BANK, sci: SCI_BANK };
+
+// המאגרים הוותיקים (לפי רמה) מצטרפים למאגרי הנושאים החדשים
+for (const [subj, bank] of Object.entries({ heb: HEB_BANK, sci: SCI_BANK, en: BANK })) {
+  for (const [lvl, arr] of Object.entries(bank)) {
+    for (const q of arr) {
+      if (subj === "en" && q.t !== "read") continue;
+      addToBank(subj, q.t, [{ ...q, lv: +lvl }]);
+    }
+  }
+}
 
 // ---------- עזרים ----------
 
@@ -509,10 +494,11 @@ function webSpeakRaw(text, lang) {
 
 // תרגילי חשבון בקריינות עברית: "12 ÷ 3 = 4" → "12 חלקי 3 שווה 4", "½" → "חצי".
 // סימן מוחלף רק כשיש מספר (או קו השלמה) משני צדדיו — כדי לא לגעת ב-"cat = חתול" או ב"ה-3".
-const MATH_N = "[0-9½¼¾]|_{2,}";
+const MATH_L = "[0-9½¼¾²³⁴⁵⁶)%°]|_{2,}|(?<![A-Za-z])[xyab](?![A-Za-z])";
+const MATH_R = "[0-9½¼¾(√−]|_{2,}|(?<![A-Za-z])[xyab](?![A-Za-z])";
 const MATH_WORDS = { "+": "ועוד", "−": "פחות", "×": "כפול", "÷": "חלקי", "=": "שווה" };
-const MATH_OP_RE = new RegExp(`(${MATH_N})\\s*([+−×÷=])\\s*(?=${MATH_N})`, "g");
-const MATH_ASK_RE = /([0-9½¼¾])\s*=\s*(?:_{2,}|\?)/g;
+const MATH_OP_RE = new RegExp(`(${MATH_L})\\s*([+−×÷=])\\s*(?=${MATH_R})`, "g");
+const MATH_ASK_RE = /([0-9½¼¾)])\s*=\s*(?:_{2,}|\?)/g;
 
 function mathToHebrew(s) {
   return String(s)
@@ -547,8 +533,9 @@ function speak(text, opts = {}) {
 
 // הקראת תוכן בשפה המתאימה: אנגלית רק כשיש אותיות באנגלית ואין עברית —
 // תרגיל חשבון (מספרים וסימנים בלבד) נקרא בעברית
+const isMathExpr = (t) => /^[\s\d.,+\-−×÷=()/:_²³⁴⁵⁶√%°xyab]+$/.test(t) && /[\d=]/.test(t);
 function speakAny(text, opts = {}) {
-  if (hasEnglish(text) && !isHeb(text)) speak(text, opts);
+  if (hasEnglish(text) && !isHeb(text) && !isMathExpr(String(text))) speak(text, opts);
   else speakHe(text, opts);
 }
 
@@ -1108,6 +1095,8 @@ const LESSONS = {
   },
 };
 
+mergeLessons(LESSONS);
+
 // ---------- חשבון: מחולל שאלות (אינסופי, עובד גם בלי רשת) ----------
 
 const OBJECTS = ["🍎", "🎈", "⭐", "🍪", "⚽", "🐤"];
@@ -1311,9 +1300,7 @@ function mathLesson(level, topicId, profile, seen = []) {
 
 // שיעורים שמתאימים לרמת הילד: מעל המינימום ולא קלים מדי (max)
 function lessonsFor(subj, topicId, level) {
-  return ((LESSONS[subj] && LESSONS[subj][topicId]) || []).filter(
-    (l) => level >= l.min && level <= (l.max || 6)
-  );
+  return (LESSONS[subj] && LESSONS[subj][topicId]) || [];
 }
 
 // התקדמות אמיתית במקצוע (0-100): מה שהילד באמת עשה, לא הרמה שבה התחיל.
@@ -1346,8 +1333,8 @@ const DAY_LETTERS = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 // בחירת שאלת אבחון לפי מקצוע ורמה
 function pickDiagQuestion(subj, level, used, profile) {
   if (subj === "math") {
-    const avail = TOPICS.math.filter((t) => t.id !== "mix" && level >= t.min).map((t) => t.id);
-    const q = genMath(level, avail[rnd(0, avail.length - 1)], profile);
+    const avail = TOPICS.math.filter((t) => t.id !== "mix" && inGrade(t, profile && profile.grade)).map((t) => t.id);
+    const q = genMathTopic(avail[rnd(0, avail.length - 1)], level) || genMath(level, "add", profile);
     return { q, key: qKey(q) };
   }
   const bank = SUBJECT_BANKS[subj] || BANK;
@@ -1361,7 +1348,7 @@ function pickDiagQuestion(subj, level, used, profile) {
 
 function topicLabelOf(sub, id) {
   const t = (TOPICS[sub] || []).find((x) => x.id === id);
-  return t ? `${t.label} ${t.emoji}` : id;
+  return t ? `${t.label} ${t.emoji}` : ((TOPIC_ALIASES[sub] || {})[id] || id);
 }
 
 function recommendNext(p, onlySub = null) {
@@ -1378,7 +1365,7 @@ function recommendNext(p, onlySub = null) {
   for (const sub of Object.keys(TOPICS)) {
     if (onlySub && sub !== onlySub) continue;
     for (const t of TOPICS[sub]) {
-      if (t.id === "mix" || p.levels[sub] < t.min) continue;
+      if (t.id === "mix" || !inGrade(t, p.grade)) continue;
       const s = stats[sub + ":" + t.id];
       cands.push({ sub, t, ratio: s ? s.c / s.t : null, last: s ? s.last : -1 });
     }
@@ -1424,16 +1411,29 @@ function Confetti({ burst, big }) {
 
 function StepPath({ total, done, current }) {
   return (
-    <div className={"path" + (total > 6 ? " small" : "")} role="img" aria-label={`צעד ${Math.min(done + 1, total)} מתוך ${total}`}>
+    <div className="progress" role="img" aria-label={`צעד ${Math.min(done + 1, total)} מתוך ${total}`}>
       {Array.from({ length: total }, (_, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && <div className={"path-line" + (i <= done ? " filled" : "")} />}
-          <div className={"stone" + (i < done ? " done" : i === current ? " current" : "")}>
-            {i < done ? "✓" : i === current ? <span className="fox">🤖</span> : ""}
-          </div>
-        </React.Fragment>
+        <span key={i} className={"seg" + (i < done ? " done" : i === current ? " current" : "")} />
       ))}
     </div>
+  );
+}
+
+// אייקונים נקיים (SVG) לכפתורי הפינה
+const ICON_PATHS = {
+  home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" /></>,
+  sound: <><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z" /><path d="M15.5 9a4.5 4.5 0 0 1 0 6" /><path d="M18 6.5a8 8 0 0 1 0 11" /></>,
+  mute: <><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z" /><path d="m16 9.5 5 5" /><path d="m21 9.5-5 5" /></>,
+  speech: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0" /><path d="M12 17.5V21" /></>,
+  nospeech: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0" /><path d="M12 17.5V21" /><path d="m4 4 16 16" /></>,
+  parents: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0" /><circle cx="17.5" cy="9.5" r="2.5" /><path d="M16 14.6a5 5 0 0 1 5.5 5.4" /></>,
+  users: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16 5.5a3 3 0 0 1 0 5.8" /><path d="M18 14.5a5 5 0 0 1 3 5.5" /></>,
+};
+function Icon({ name }) {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICON_PATHS[name]}
+    </svg>
   );
 }
 
@@ -1645,7 +1645,7 @@ function QuestionCard({ q, onAnswer, phase, selected }) {
       {q.en && !answered && !sc ? (
         <div className="hint">🔊 לחצו על מילה כדי לשמוע אותה — או על הרמקול להקראת המשפט המלא</div>
       ) : null}
-      <div className="answers">
+      <div className={"answers" + (q.options.every((o) => String(o).length <= 16) ? " grid2" : "")}>
         {q.options.map((opt, i) => {
           let cls = "ans";
           if (answered) {
@@ -1682,6 +1682,7 @@ export default function App() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [sceneOv, setSceneOv] = useState(null); // אינדקס הצעד שהאנימציה שלו פתוחה על כל המסך
   const [showText, setShowText] = useState(false);
+  const [showAllTopics, setShowAllTopics] = useState(false);
 
   // השתקה + הקראה + אזור הורים
   const [muted, setMutedState] = useState(false);
@@ -1976,6 +1977,19 @@ export default function App() {
     markActiveStart();
     setSubject(subj);
     setTopic(topicObj);
+    {
+      const seenS = (profile.seen && profile.seen[subj]) || [];
+      const lvlS = profile.levels[subj];
+      const qsNew = topicObj.id === "mix"
+        ? mixPractice(subj, TOPICS[subj].filter((t) => inGrade(t, profile.grade)), lvlS, seenS)
+        : practiceFor(subj, topicObj.id, lvlS, seenS);
+      if (qsNew && qsNew.length >= 5) {
+        recordSeen(subj, qsNew);
+        setLesson({ qs: qsNew, i: 0, phase: "idle", selected: null, fb: "", correct: 0 });
+        setScreen("lesson");
+        return;
+      }
+    }
     if (subj === "math") {
       // חשבון נוצר מקומית — מיידי, עובד גם בלי רשת
       const qs = mathLesson(
@@ -2436,415 +2450,9 @@ export default function App() {
 
   // ---------- תצוגה ----------
 
-  const css = (
-    <style>{`
-      .lomi, .lomi * { box-sizing: border-box; margin: 0; font-family: 'Rubik','Segoe UI','Arial Hebrew',sans-serif; }
-      .lomi {
-        --sky:#EEF6FC; --ink:#20305A; --sub:#6B7A9C; --card:#FFFFFF;
-        --purple:#6D5AE6; --purple-d:#5546C8; --leaf:#2FB57C; --leaf-d:#218B5E;
-        --sun:#FFC43D; --coral:#FF7B6E; --coral-d:#E05B4E; --line:#D9E6F2;
-        min-height:100vh; min-height:100dvh; background:var(--sky); color:var(--ink);
-        display:flex; justify-content:center; padding:20px 14px 40px;
-      }
-      .frame { width:100%; max-width:520px; position:relative; }
-      .card { background:var(--card); border-radius:24px; padding:26px 22px;
-        box-shadow:0 8px 24px rgba(32,48,90,.08); position:relative; overflow:hidden; }
-      h1 { font-size:30px; font-weight:800; line-height:1.2; }
-      h2 { font-size:23px; font-weight:800; }
-      .sub { color:var(--sub); font-size:16px; margin-top:8px; line-height:1.5; }
-      .mascot { font-size:64px; line-height:1; }
-      .mascot.bounce { display:inline-block; animation:hop 1s ease-in-out infinite; }
-      @keyframes hop { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-
-      .btn { display:block; width:100%; border:none; cursor:pointer; border-radius:18px;
-        background:var(--purple); color:#fff; font-size:20px; font-weight:700; padding:16px;
-        box-shadow:0 5px 0 var(--purple-d); transition:transform .08s; margin-top:18px; }
-      .btn:active { transform:translateY(4px); box-shadow:0 1px 0 var(--purple-d); }
-      .btn:disabled { opacity:.4; box-shadow:none; cursor:default; }
-      .btn.green { background:var(--leaf); box-shadow:0 5px 0 var(--leaf-d); }
-      .btn.ghost { background:transparent; color:var(--sub); box-shadow:none; font-weight:500; font-size:15px; padding:10px; }
-
-      .input { width:100%; margin-top:18px; padding:15px 16px; font-size:19px; border-radius:16px;
-        border:2px solid var(--line); background:#FAFCFF; color:var(--ink); outline:none; text-align:center; }
-      .input:focus { border-color:var(--purple); }
-      .input.tts { margin-top:8px; font-size:16px; padding:10px 12px; direction:ltr; text-align:left; }
-
-      .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:18px; }
-      .chipgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:18px; }
-      .chip { border:2px solid var(--line); background:#FAFCFF; border-radius:16px; padding:14px 10px;
-        font-size:17px; font-weight:500; color:var(--ink); cursor:pointer; transition:all .12s; }
-      .chip.on { border-color:var(--purple); background:#F1EEFF; font-weight:700; }
-
-      /* בחירת מקצוע */
-      .subjects { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
-      .subjbtn { border:2px solid var(--line); background:#FAFCFF; border-radius:20px;
-        padding:18px 10px 14px; font-size:19px; font-weight:800; color:var(--ink); cursor:pointer;
-        box-shadow:0 4px 0 var(--line); transition:all .12s; }
-      .subjbtn:hover { border-color:var(--purple); background:#F1EEFF; transform:translateY(-2px); }
-      .subjbtn:active { transform:translateY(2px); box-shadow:none; }
-      .semoji { display:block; font-size:38px; margin-bottom:6px; animation:floaty 3s ease-in-out infinite; }
-      .subjlvl { display:block; font-size:12px; color:var(--sub); font-weight:600; margin-top:4px; }
-      .qen.heb { direction:rtl; font-size:19px; font-weight:600; line-height:1.7; text-align:right; }
-
-      /* בחירת נושא לפני שיעור */
-      .topicgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:18px; }
-      .topicchip { position:relative; border:2px solid var(--line); background:#FAFCFF; border-radius:20px;
-        padding:16px 8px 12px; font-size:17px; font-weight:700; color:var(--ink); cursor:pointer;
-        box-shadow:0 4px 0 var(--line); transition:all .12s; animation:chipin .45s both; }
-      .topicchip.recommended { border-color:var(--sun); background:#FFF9E8; }
-      .pointbadge { position:absolute; top:-11px; inset-inline-end:-4px; background:var(--sun); color:#6B4E00;
-        font-size:12px; font-weight:800; padding:4px 9px; border-radius:999px; white-space:nowrap;
-        box-shadow:0 2px 6px rgba(32,48,90,.2); animation:pointbounce 1.1s ease-in-out infinite; z-index:2; }
-      @keyframes pointbounce { 0%,100%{transform:translateX(0)} 50%{transform:translateX(-6px)} }
-      .tprog { display:block; margin-top:8px; }
-      .tbar { display:block; height:6px; background:#E4EDF7; border-radius:3px; overflow:hidden; }
-      .tfill { display:block; height:100%; border-radius:3px; background:var(--leaf); }
-      .tfill.mid { background:var(--sun); }
-      .tfill.low { background:var(--coral); }
-      .tpct { display:block; font-size:11.5px; color:var(--sub); font-weight:600; margin-top:4px; }
-      .tnew { display:inline-block; font-size:12px; color:var(--purple-d); font-weight:700;
-        background:#F1EEFF; border-radius:999px; padding:2px 10px; }
-
-      /* רשימת שיעורים בנושא */
-      .lessonlist { display:grid; grid-template-columns:1fr; gap:10px; margin-top:16px; }
-      .lessonbtn { display:flex; align-items:center; gap:10px; text-align:right; border:2px solid var(--line);
-        background:#FAFCFF; border-radius:16px; padding:12px 14px; font-size:16px; font-weight:700;
-        color:var(--ink); cursor:pointer; box-shadow:0 3px 0 var(--line); transition:all .12s;
-        animation:chipin .4s both; }
-      .lessonbtn:hover { border-color:var(--purple); background:#F1EEFF; }
-      .lessonbtn:active { transform:translateY(2px); box-shadow:none; }
-      .lessonbtn.completed { border-color:#9FE3C3; background:#F3FCF7; }
-      .lemoji { font-size:26px; }
-      .ltitle { flex:1; }
-      .lstate { font-size:12px; font-weight:700; color:var(--purple-d); background:#F1EEFF;
-        border-radius:999px; padding:3px 9px; white-space:nowrap; }
-      .lstate.ok { color:var(--leaf-d); background:#EAFBF2; }
-
-      /* כרטיס הסבר בשיעור */
-      .teachbody { margin-top:10px; font-size:17px; line-height:1.7; color:var(--ink); text-align:center; }
-      .artrow { display:flex; justify-content:center; align-items:center; gap:16px; margin-bottom:6px; }
-      .artmoji { font-size:46px; display:inline-block; animation:artin .55s both; }
-      @keyframes artin { 0%{opacity:0; transform:scale(.2) rotate(-25deg)} 70%{transform:scale(1.15) rotate(5deg)} 100%{opacity:1; transform:none} }
-      .lomisays { display:flex; gap:10px; align-items:flex-start; margin-top:14px; }
-      .showtext { border:none; background:none; color:var(--purple-d); font:inherit; font-weight:700; cursor:pointer; padding:2px 0; text-decoration:underline; }
-      .lomiface { font-size:34px; flex-shrink:0; animation:hop 2.2s ease-in-out infinite; }
-      .lomibubble { background:#F1EEFF; border-radius:18px 4px 18px 18px; padding:12px 14px;
-        font-size:16.5px; line-height:1.7; color:var(--ink); animation:cardin .4s ease both; }
-      .combo { margin-top:6px; text-align:center; font-size:16px; font-weight:800; color:#E8590C;
-        animation:pop .45s ease; }
-      .qpic { cursor:pointer; }
-      .qpic.poke { animation:happyjump .55s ease; }
-
-      /* רובוט SVG מודרני + סמלים מרחפים */
-      .bothero { position:relative; width:212px; margin:0 auto; padding:4px 0; }
-      .floaties { position:absolute; inset:0; pointer-events:none; }
-      .floatie { position:absolute; width:38px; height:38px; border-radius:50%; background:#fff;
-        border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
-        font-size:18px; font-weight:800; color:var(--purple-d);
-        box-shadow:0 3px 10px rgba(32,48,90,.12);
-        animation:floatiein .5s both, floaty 3s ease-in-out .55s infinite; }
-      @keyframes floatiein { 0%{opacity:0; transform:scale(.2) rotate(-30deg)} 70%{transform:scale(1.18) rotate(6deg)} 100%{opacity:1; transform:none} }
-      .floatie.f0 { top:-2px; right:8px; }
-      .floatie.f1 { top:36px; left:0; }
-      .floatie.f2 { bottom:0; right:0; }
-      .botface { display:block; margin:0 auto; animation:floaty 3.2s ease-in-out infinite; }
-      .bot-eyes { animation:blink 4.2s infinite; transform-box:fill-box; transform-origin:center; }
-      @keyframes blink { 0%,91%,100%{transform:scaleY(1)} 94%{transform:scaleY(0.08)} }
-      .bot-ant { animation:antpulse 1.7s ease-in-out infinite; }
-      @keyframes antpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-
-      /* מד התקדמות למקצוע + בורר רמה */
-      .subjbar { display:block; height:6px; background:#E4EDF7; border-radius:3px; margin-top:7px; overflow:hidden; }
-      .subjfill { display:block; height:100%; background:linear-gradient(90deg, var(--leaf), #6FD9A6); border-radius:3px; transition:width .3s; }
-      .lvladjust { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; flex-wrap:wrap; }
-      .lvlbtn { border:2px solid var(--line); background:#FAFCFF; border-radius:999px; padding:7px 12px;
-        font-size:13.5px; font-weight:700; color:var(--ink); cursor:pointer; box-shadow:0 2px 0 var(--line); transition:all .12s; }
-      .lvlbtn:hover { border-color:var(--purple); background:#F1EEFF; }
-      .lvlbtn:active { transform:translateY(2px); box-shadow:none; }
-      .lvlbtn:disabled { opacity:.35; cursor:default; }
-      .lvllabel { font-size:14px; font-weight:800; color:var(--sub); }
-      .lvllabel.big { display:flex; flex-direction:column; align-items:center; line-height:1.2;
-        font-size:11.5px; color:var(--sub); min-width:96px; }
-      .lvllabel.big b { font-size:15px; color:var(--purple-d); margin-top:2px; }
-      .adjhint { margin-top:14px; font-size:13px; }
-
-      /* שורת ימי השבוע — דקות למידה אקטיבית */
-      .weekrow { display:flex; gap:6px; justify-content:center; margin-top:14px; }
-      .daycell { width:42px; background:#FAFCFF; border:2px solid var(--line); border-radius:12px; padding:6px 2px; }
-      .dlet { display:block; font-size:12px; font-weight:700; color:var(--sub); }
-      .dmin { display:block; font-size:15px; font-weight:800; color:var(--leaf-d); min-height:20px; }
-      .daycell.today { border-color:var(--purple); background:#F1EEFF; }
-      .daycell.future { opacity:.4; }
-      .weeklegend { font-size:12px; color:var(--sub); margin-top:6px; }
-
-      /* מסלול צעדים צפוף לשיעורים ארוכים */
-      .path.small .stone { width:26px; height:26px; font-size:12px; }
-      .path.small .fox { font-size:13px; }
-      .path.small .path-line { width:13px; }
-      .topicchip:hover { border-color:var(--purple); background:#F1EEFF; transform:translateY(-2px) rotate(-1deg); }
-      .topicchip:hover .temoji { animation:wiggle .5s; }
-      .topicchip:active { transform:translateY(2px); box-shadow:none; }
-      .temoji { display:block; font-size:36px; margin-bottom:6px; }
-      @keyframes chipin { from{opacity:0; transform:translateY(14px) scale(.85)} to{opacity:1; transform:none} }
-
-      /* כפתור בית בפינת כל מסך */
-      .corner { position:absolute; top:10px; left:10px; width:38px; height:38px; border-radius:50%;
-        border:2px solid var(--line); background:#FAFCFF; font-size:17px; cursor:pointer; z-index:6;
-        display:flex; align-items:center; justify-content:center; padding:0;
-        box-shadow:0 2px 0 var(--line); transition:all .12s; }
-      .corner:hover { border-color:var(--purple); background:#F1EEFF; }
-      .corner:active { transform:translateY(2px); box-shadow:none; }
-
-      /* בחירת משתמש */
-      .usergrid { display:grid; grid-template-columns:1fr; gap:10px; margin-top:18px; }
-      .userrow { display:flex; align-items:center; gap:8px; }
-      .userbtn { flex:1; display:flex; align-items:center; gap:12px; border:2px solid var(--line);
-        background:#FAFCFF; border-radius:18px; padding:12px 16px; cursor:pointer; font-size:18px;
-        font-weight:700; color:var(--ink); box-shadow:0 3px 0 var(--line); transition:all .12s;
-        animation:chipin .4s both; }
-      .userbtn:hover { border-color:var(--purple); background:#F1EEFF; }
-      .userbtn:active { transform:translateY(2px); box-shadow:none; }
-      .uemoji { font-size:28px; }
-      .usub { margin-inline-start:auto; color:var(--sub); font-size:14px; font-weight:600; }
-      .udel { width:34px; height:34px; border-radius:50%; border:2px solid var(--line); background:#fff;
-        color:var(--sub); font-size:15px; font-weight:700; cursor:pointer; flex-shrink:0; transition:all .12s; }
-      .udel:hover { border-color:var(--coral-d); color:#fff; background:var(--coral); }
-
-      /* דיאלוג אישור מחיקה */
-      .overlay { position:fixed; inset:0; background:rgba(32,48,90,.45); display:flex; align-items:center;
-        justify-content:center; z-index:50; padding:20px; }
-      .dialog { background:#fff; border-radius:22px; padding:24px 20px; max-width:340px; width:100%;
-        text-align:center; animation:pop .3s ease; max-height:100%; overflow-y:auto; }
-      .btn.danger { background:var(--coral); box-shadow:0 5px 0 var(--coral-d); }
-
-      .corner.r { left:auto; right:10px; }
-      .corner.c2 { left:54px; }
-      .corner.r2 { left:auto; right:54px; }
-
-      /* כפתור הקראת משפט מלא */
-      .sayall { position:absolute; top:6px; inset-inline-end:6px; width:30px; height:30px;
-        border-radius:50%; border:2px solid var(--line); background:#fff; font-size:13px;
-        cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;
-        transition:all .12s; z-index:2; }
-      .sayall:hover { border-color:var(--purple); background:#F1EEFF; }
-      .sayall:active { transform:scale(.9); }
-
-      /* המלצת השיעור הבא */
-      .recbtn { display:block; width:100%; margin-top:14px; border-radius:16px; border:2px solid #F4DFA5;
-        background:#FFF7E3; padding:12px 14px; font-size:16px; font-weight:600; color:var(--ink);
-        cursor:pointer; text-align:center; box-shadow:0 3px 0 #F4DFA5; transition:all .12s; line-height:1.6; }
-      .recbtn small { color:var(--sub); font-size:13px; }
-      .recbtn:hover { border-color:var(--sun); transform:translateY(-1px); }
-      .recbtn:active { transform:translateY(2px); box-shadow:none; }
-
-      /* קוד הורים */
-      .pindots { display:flex; gap:14px; justify-content:center; margin:18px 0 4px; }
-      .pindot { width:16px; height:16px; border-radius:50%; border:2px solid var(--line); background:#FAFCFF; transition:all .12s; }
-      .pindot.full { background:var(--purple); border-color:var(--purple); }
-      .pindot.err { background:var(--coral); border-color:var(--coral-d); animation:shake .35s; }
-      .pinpad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
-      .pinkey { padding:13px; font-size:22px; font-weight:800; border-radius:16px; border:2px solid var(--line);
-        background:#FAFCFF; cursor:pointer; box-shadow:0 3px 0 var(--line); color:var(--ink); transition:all .12s; }
-      .pinkey:hover { border-color:var(--purple); }
-      .pinkey:active { transform:translateY(2px); box-shadow:none; }
-
-      /* דוח הורים */
-      .kidtabs { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:12px; }
-      .psec { margin-top:18px; }
-      .psec h3 { font-size:16px; font-weight:800; margin-bottom:8px; color:var(--purple-d); }
-      .chip.voice { padding:9px 12px; direction:ltr; }
-      .ttsadv { margin-top:14px; }
-      .ttsadv summary { cursor:pointer; font-size:14px; font-weight:700; color:var(--purple-d); }
-      .pgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
-      .pbox { background:#FAFCFF; border:2px solid var(--line); border-radius:14px; padding:10px 12px;
-        font-size:13px; font-weight:600; text-align:center; color:var(--sub); }
-      .pbox b { display:block; font-size:18px; color:var(--ink); margin-top:2px; }
-      .prow { display:flex; align-items:center; justify-content:space-between; gap:8px; background:#FAFCFF;
-        border:2px solid var(--line); border-radius:12px; padding:8px 12px; margin-bottom:6px;
-        font-size:14px; font-weight:600; }
-      .pct { font-weight:800; }
-      .pct.good { color:var(--leaf-d); }
-      .pct.mid { color:#B07D00; }
-      .pct.low { color:var(--coral-d); }
-
-      .path { display:flex; align-items:center; justify-content:center; margin:4px 0 14px; }
-      .stone { width:38px; height:38px; border-radius:50%; background:#E4EDF7; color:#fff;
-        display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px;
-        position:relative; flex-shrink:0; }
-      .stone.done { background:var(--leaf); }
-      .stone.current { background:#fff; border:3px solid var(--purple); animation:pulse 1.4s infinite; }
-      .fox { font-size:20px; }
-      @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(109,90,230,.35)} 50%{box-shadow:0 0 0 8px rgba(109,90,230,0)} }
-      .path-line { height:5px; width:26px; background:#E4EDF7; border-radius:3px; }
-      .path-line.filled { background:var(--leaf); }
-
-      .bubble { background:#F1EEFF; color:var(--purple-d); font-weight:700; font-size:16px;
-        border-radius:14px; padding:10px 14px; text-align:center; margin-bottom:14px; }
-
-      /* כרטיס שאלה חי */
-      .qcard { animation:cardin .4s ease both; }
-      @keyframes cardin { from{opacity:0; transform:translateY(16px)} to{opacity:1; transform:none} }
-      .qpic { font-size:54px; text-align:center; line-height:1.2; margin-bottom:6px;
-        animation:floaty 2.6s ease-in-out infinite; }
-      .qpic.happy { animation:happyjump .7s ease; }
-      @keyframes floaty { 0%,100%{transform:translateY(0) rotate(-4deg)} 50%{transform:translateY(-7px) rotate(4deg)} }
-      @keyframes happyjump { 0%{transform:scale(1)} 35%{transform:translateY(-16px) scale(1.25) rotate(-10deg)}
-        70%{transform:translateY(0) scale(.95)} 100%{transform:none} }
-      .qtext { font-size:21px; font-weight:700; line-height:1.4; }
-      .qen { direction:ltr; text-align:center; font-size:24px; font-weight:700; background:#FAFCFF;
-        border:2px dashed var(--line); border-radius:16px; padding:14px; padding-inline-end:40px;
-        margin-top:14px; color:var(--ink); position:relative; }
-      .lomibubble { position:relative; padding-inline-end:40px; }
-
-      /* מילים חיות */
-      .word { display:inline-block; animation:wordin .45s both; }
-      @keyframes wordin { from{opacity:0; transform:translateY(10px) scale(.7)} to{opacity:1; transform:none} }
-      .word.speakable { cursor:pointer; border-bottom:2px dotted transparent; transition:color .12s; }
-      .word.speakable:hover { color:var(--purple); border-bottom-color:var(--purple); }
-      .word.wiggle { animation:wiggle .6s; color:var(--purple); }
-      @keyframes wiggle { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-10deg) scale(1.2)} 60%{transform:rotate(9deg) scale(1.15)} }
-
-      /* קו השלמה אחיד — במקום כמה קווים */
-      .blank { display:inline-block; min-width:60px; height:1em; vertical-align:middle; margin:0 6px;
-        border-bottom:4px solid var(--purple); border-radius:3px;
-        animation:blankpulse 1.5s ease-in-out infinite; }
-      .blank.filled { min-width:0; height:auto; padding:0 4px; border-bottom-color:var(--leaf);
-        color:var(--leaf-d); font-weight:800; animation:pop .45s ease; }
-      @keyframes blankpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-
-      .hint { margin-top:10px; font-size:13px; color:var(--sub); text-align:center; }
-
-      .answers { display:grid; grid-template-columns:1fr; gap:10px; margin-top:16px; }
-      .ans { border:2px solid var(--line); background:#fff; border-radius:16px; padding:14px 16px;
-        font-size:19px; font-weight:600; color:var(--ink); cursor:pointer; text-align:center;
-        box-shadow:0 3px 0 var(--line); transition:all .12s; animation:ansin .4s both; }
-      @keyframes ansin { from{opacity:0; transform:translateX(18px) scale(.95)} to{opacity:1; transform:none} }
-      .ans:not(:disabled):hover { border-color:var(--purple); transform:scale(1.02); }
-      .ans:active { transform:translateY(2px); box-shadow:none; }
-      .ans.right { background:var(--leaf); border-color:var(--leaf-d); color:#fff; box-shadow:0 3px 0 var(--leaf-d); animation:pop .4s ease; }
-      .ans.wrong { background:var(--coral); border-color:var(--coral-d); color:#fff; box-shadow:0 3px 0 var(--coral-d); animation:shake .35s; }
-      .ans.dim { opacity:.45; animation:none; }
-      @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
-
-      .fb { margin-top:14px; text-align:center; font-size:19px; font-weight:800; color:var(--leaf-d); }
-      .fb.bad { color:var(--coral-d); }
-      .explain { margin-top:10px; background:#FFF7E3; border:2px solid #F4DFA5; border-radius:14px;
-        padding:12px 14px; font-size:16px; line-height:1.5; animation:explainin .5s ease both; }
-      .explain.good { background:#EAFBF2; border-color:#9FE3C3; }
-      @keyframes explainin { from{opacity:0; transform:translateY(14px) scale(.94)} to{opacity:1; transform:none} }
-      .bulb { display:inline-block; animation:bulbwig .9s ease .25s; }
-      @keyframes bulbwig { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-16deg) scale(1.25)} 60%{transform:rotate(12deg) scale(1.15)} }
-
-      .stats { display:flex; gap:8px; justify-content:center; margin-top:16px; flex-wrap:wrap; }
-      .stat { background:#FAFCFF; border:2px solid var(--line); border-radius:14px; padding:8px 14px;
-        font-size:15px; font-weight:700; }
-
-      .confetti { position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:5; }
-      .confetti span { position:absolute; top:-24px; animation:fall linear forwards; }
-      @keyframes fall { to { transform:translateY(420px) rotate(340deg); opacity:0; } }
-
-      .bigstars { font-size:44px; letter-spacing:4px; margin-top:10px; animation:pop .5s ease; }
-      @keyframes pop { 0%{transform:scale(.3)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
-
-      .timer { font-size:56px; font-weight:800; color:var(--purple); margin:14px 0; }
-      .center { text-align:center; }
-      .mt { margin-top:16px; }
-
-      /* התאמה למסכי טלפון (אנדרואיד/אייפון) — הכול נכנס במסך בלי גלילה */
-      @media (max-width: 520px), (max-height: 800px) {
-        .lomi { padding:6px 8px 8px; }
-        .card { padding:12px 12px 14px; border-radius:20px; }
-        h1 { font-size:21px; }
-        h2 { font-size:18px; }
-        .sub { font-size:13.5px; margin-top:6px; line-height:1.4; }
-        .mascot { font-size:42px; }
-        .bothero { width:166px; padding:0; }
-        .botface { width:64px; height:64px; }
-        .floatie { width:28px; height:28px; font-size:13px; }
-        .floatie.f1 { top:22px; }
-        .floatie { width:30px; height:30px; font-size:14px; }
-        .stats { gap:5px; margin-top:8px; }
-        .stat { padding:4px 9px; font-size:12px; border-radius:10px; border-width:1.5px; }
-        .weekrow { margin-top:8px; gap:4px; }
-        .daycell { width:34px; padding:3px 2px; border-width:1.5px; }
-        .dlet { font-size:10.5px; }
-        .dmin { font-size:12.5px; min-height:15px; }
-        .weeklegend { margin-top:3px; font-size:10.5px; }
-        .recbtn { margin-top:8px; padding:7px 10px; font-size:13px; line-height:1.45; }
-        .subjects { gap:7px; margin-top:8px; }
-        .subjbtn { padding:9px 5px 7px; font-size:14px; border-radius:14px; }
-        .semoji { font-size:24px; margin-bottom:2px; animation:none; }
-        .subjlvl { font-size:10px; margin-top:2px; }
-        .subjbar { margin-top:4px; height:4px; }
-        .lvladjust { margin-top:8px; gap:5px; }
-        .lvlbtn { padding:4px 9px; font-size:11.5px; }
-        .lvllabel { font-size:12px; }
-        .btn { padding:11px; font-size:16px; margin-top:10px; border-radius:14px; }
-        .btn.ghost { padding:5px; font-size:12.5px; margin-top:6px; }
-        .path { margin:0 0 6px; }
-        .stone { width:28px; height:28px; font-size:12px; }
-        .fox { font-size:14px; }
-        .path-line { width:16px; height:4px; }
-        .path.small .stone { width:22px; height:22px; font-size:10px; }
-        .path.small .path-line { width:10px; }
-        .bubble { font-size:12.5px; padding:6px 9px; margin-bottom:7px; border-radius:10px; }
-        .qpic { font-size:36px; margin-bottom:2px; }
-        .qtext { font-size:16.5px; }
-        .qen { font-size:18px; padding:8px; padding-inline-end:34px; margin-top:8px; border-radius:12px; }
-        .qen.heb { font-size:15px; }
-        .hint { margin-top:5px; font-size:10.5px; }
-        .answers { gap:6px; margin-top:9px; }
-        .ans { padding:9px 12px; font-size:15.5px; border-radius:12px; }
-        .fb { margin-top:7px; font-size:15px; }
-        .explain { margin-top:5px; padding:7px 10px; font-size:13px; border-radius:10px; }
-        .combo { font-size:12.5px; margin-top:2px; }
-        .lomisays { margin-top:8px; gap:7px; }
-        .lomiface { font-size:24px; }
-        .lomibubble { font-size:13.5px; padding:8px 10px; padding-inline-end:32px; line-height:1.55; }
-        .teachbody { font-size:13.5px; }
-        .artrow { gap:10px; margin-bottom:2px; }
-        .artmoji { font-size:30px; }
-        .topicgrid { gap:7px; margin-top:9px; }
-        .topicchip { padding:9px 5px 7px; font-size:13.5px; border-radius:14px; }
-        .temoji { font-size:24px; margin-bottom:2px; }
-        .tprog { margin-top:5px; }
-        .tpct { font-size:9.5px; margin-top:2px; }
-        .tnew { font-size:10px; padding:1px 8px; }
-        .pointbadge { font-size:10px; padding:3px 7px; top:-9px; }
-        .lessonlist { gap:6px; margin-top:9px; }
-        .lessonbtn { padding:8px 10px; font-size:13.5px; border-radius:12px; }
-        .lemoji { font-size:20px; }
-        .lstate { font-size:10px; }
-        .chipgrid, .grid { gap:6px; margin-top:9px; }
-        .chip { padding:9px 7px; font-size:14px; border-radius:12px; }
-        .corner { width:32px; height:32px; font-size:13px; top:8px; }
-        .corner.c2 { left:46px; }
-        .corner.r2 { right:46px; }
-        .sayall { width:25px; height:25px; font-size:10px; top:5px; }
-        .timer { font-size:42px; margin:6px 0; }
-        .bigstars { font-size:32px; margin-top:5px; letter-spacing:2px; }
-        .input { margin-top:10px; padding:11px; font-size:17px; }
-        .usergrid { gap:6px; margin-top:9px; }
-        .userbtn { padding:8px 12px; font-size:15px; }
-        .pinpad { gap:6px; margin-top:9px; }
-        .pinkey { padding:8px; font-size:17px; }
-        .pindots { margin:8px 0 2px; gap:10px; }
-        .pgrid { gap:5px; }
-        .pbox { padding:6px 8px; font-size:11px; }
-        .pbox b { font-size:14px; }
-        .prow { padding:5px 9px; font-size:12px; margin-bottom:4px; }
-        .psec { margin-top:12px; }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .lomi * { animation:none !important; transition:none !important; }
-      }
-    `}</style>
-  );
 
   const wrap = (children) => (
     <div className="lomi" dir="rtl" lang="he">
-      {css}
       <div className="frame">{children}</div>
     </div>
   );
@@ -2857,7 +2465,7 @@ export default function App() {
     return wrap(
       <div className="card center">
         {users.length > 0 && (
-          <button className="corner" onClick={() => { sfx.click(); setScreen("users"); }} aria-label="חזרה לבחירת משתמש">👥</button>
+          <button className="corner" onClick={() => { sfx.click(); setScreen("users"); }} aria-label="חזרה לבחירת משתמש"><Icon name="users" /></button>
         )}
         <div className="bothero">
           <FloatingSymbols />
@@ -2882,7 +2490,7 @@ export default function App() {
     return wrap(
       <div className="card center">
         {users.length > 0 && (
-          <button className="corner" onClick={() => { sfx.click(); setScreen("users"); }} aria-label="חזרה לבחירת משתמש">👥</button>
+          <button className="corner" onClick={() => { sfx.click(); setScreen("users"); }} aria-label="חזרה לבחירת משתמש"><Icon name="users" /></button>
         )}
         <h2>באיזו כיתה אתה, {name.trim()}?</h2>
         <div className="grid">
@@ -2906,7 +2514,7 @@ export default function App() {
     return wrap(
       <div className="card center">
         {users.length > 0 && (
-          <button className="corner" onClick={() => { sfx.click(); setScreen("users"); }} aria-label="חזרה לבחירת משתמש">👥</button>
+          <button className="corner" onClick={() => { sfx.click(); setScreen("users"); }} aria-label="חזרה לבחירת משתמש"><Icon name="users" /></button>
         )}
         <h2>מה אתה הכי אוהב?</h2>
         <p className="sub">בחר עד 3 — בִּיפּ ישתמש בזה כדי להכין שאלות בדיוק בשבילך</p>
@@ -2938,7 +2546,7 @@ export default function App() {
   if (screen === "diag-intro" && profile)
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <div className="mascot">🎲</div>
         <h2>רגע לפני {SUBJECTS[subject].label}...</h2>
         <p className="sub">
@@ -2960,9 +2568,9 @@ export default function App() {
   if (screen === "diag" && diag)
     return wrap(
       <div className="card">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <button className="corner r" onClick={toggleSpeech} aria-label={speechOn ? "כיבוי הקראה" : "הפעלת הקראה"} title="הקראה קולית">
-          {speechOn ? "🗣️" : "🤐"}
+          <Icon name={speechOn ? "speech" : "nospeech"} />
         </button>
         <Confetti burst={burst} />
         <StepPath total={5} done={diag.i} current={diag.i} />
@@ -3008,7 +2616,7 @@ export default function App() {
     return wrap(
       <div className="card center">
         {profile && (
-          <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+          <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         )}
         <div className="mascot bounce">🤖</div>
         <h2>מי לומד היום?</h2>
@@ -3064,7 +2672,7 @@ export default function App() {
   if (screen === "pin")
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={exitParents} aria-label="חזרה">🏠</button>
+        <button className="corner" onClick={exitParents} aria-label="חזרה"><Icon name="home" /></button>
         <div className="mascot">🔒</div>
         <h2>אזור הורים</h2>
         <p className="sub">הקישו את קוד ההורים בן 4 הספרות</p>
@@ -3084,7 +2692,7 @@ export default function App() {
     if (!kid)
       return wrap(
         <div className="card center">
-          <button className="corner" onClick={exitParents} aria-label="יציאה">🏠</button>
+          <button className="corner" onClick={exitParents} aria-label="יציאה"><Icon name="home" /></button>
           <div className="mascot">👪</div>
           <h2>אזור הורים</h2>
           <p className="sub">עדיין אין לומדים רשומים באפליקציה.</p>
@@ -3114,7 +2722,7 @@ export default function App() {
     const pctCls = (v) => (v >= 80 ? "good" : v >= 60 ? "mid" : "low");
     return wrap(
       <div className="card">
-        <button className="corner" onClick={exitParents} aria-label="יציאה">🏠</button>
+        <button className="corner" onClick={exitParents} aria-label="יציאה"><Icon name="home" /></button>
         <h2 className="center">👪 אזור הורים</h2>
         {users.length > 1 && (
           <div className="kidtabs">
@@ -3182,6 +2790,19 @@ export default function App() {
             ))}
           </div>
         )}
+        <div className="psec">
+          <h3>📷 תמונות אמיתיות</h3>
+          <details className="ttsadv">
+            <summary>קרדיטים ורישיונות (Wikimedia Commons)</summary>
+            <div className="credits">
+              {PHOTO_CREDITS.map((c, i) => (
+                <div key={i}>
+                  <a href={c.page} target="_blank" rel="noreferrer">{c.name}</a> — {c.by || "Wikimedia Commons"} ({c.license})
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
         <div className="psec">
           <h3>🎙️ הקול של בִּיפּ</h3>
           {serverTts === null ? (
@@ -3280,12 +2901,12 @@ export default function App() {
     return wrap(
       <div className="card center">
         <button className="corner" onClick={toggleMute} aria-label={muted ? "הפעלת צלילים" : "השתקה"}>
-          {muted ? "🔇" : "🔊"}
+          <Icon name={muted ? "mute" : "sound"} />
         </button>
         <button className="corner c2" onClick={toggleSpeech} aria-label={speechOn ? "כיבוי הקראה" : "הפעלת הקראה"} title="הקראה קולית">
-          {speechOn ? "🗣️" : "🤐"}
+          <Icon name={speechOn ? "speech" : "nospeech"} />
         </button>
-        <button className="corner r" onClick={openParents} aria-label="אזור הורים">👪</button>
+        <button className="corner r" onClick={openParents} aria-label="אזור הורים"><Icon name="parents" /></button>
         <div className="bothero">
           <FloatingSymbols />
           <BotFace size={92} />
@@ -3322,7 +2943,7 @@ export default function App() {
         <p className="sub">או בוחרים מקצוע:</p>
         <div className="subjects">
           {Object.entries(SUBJECTS).map(([id, s]) => (
-            <button key={id} className="subjbtn" onClick={() => { sfx.click(); setSubject(id); setScreen("topics"); }}>
+            <button key={id} className={"subjbtn s-" + id} onClick={() => { sfx.click(); setSubject(id); setScreen("topics"); }}>
               <span className="semoji">{s.emoji}</span>
               {s.label}
               <span className="subjlvl">
@@ -3381,7 +3002,9 @@ export default function App() {
 
   if (screen === "topics" && profile) {
     const lvl = profile.levels[subject];
-    const opts = TOPICS[subject].filter((t) => lvl >= t.min);
+    const inG = TOPICS[subject].filter((t) => inGrade(t, profile.grade));
+    const others = TOPICS[subject].filter((t) => !inGrade(t, profile.grade));
+    const opts = showAllTopics ? [...inG, ...others] : inG;
     const rec = recommendNext(profile, subject);
     const tstat = {};
     (profile.history || []).forEach((h) => {
@@ -3393,10 +3016,12 @@ export default function App() {
     });
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <div className="mascot bounce">🤖</div>
         <h2>מה בא לך ללמוד היום ב{SUBJECTS[subject].label}?</h2>
-        <p className="sub">בחר נושא — או תן לבִּיפּ להפתיע אותך 🎲</p>
+        <p className="sub">
+          {profile.grade != null ? `נושאים לכיתה ${GRADES[profile.grade]} — ` : ""}בחר נושא או תן לבִּיפּ להפתיע אותך 🎲
+        </p>
         <div className="lvladjust">
           <button className="lvlbtn" disabled={lvl <= 1} onClick={() => adjustLevels(-1, subject)}>
             ➖ קל יותר
@@ -3417,13 +3042,18 @@ export default function App() {
             return (
               <button
                 key={t.id}
-                className={"topicchip" + (isRec ? " recommended" : "")}
+                className={"topicchip" + (isRec ? " recommended" : "") + (inGrade(t, profile.grade) ? "" : " other")}
                 style={{ animationDelay: i * 90 + "ms" }}
                 onClick={() => openTopic(t)}
               >
                 {isRec && <span className="pointbadge">👈 כדאי לתרגל</span>}
-                <span className="temoji">{t.emoji}</span>
+                {t.photo && PHOTOS[t.photo] ? (
+                  <span className="temoji photo" style={{ backgroundImage: `url("${PHOTOS[t.photo].src}")` }} role="img" aria-label={PHOTOS[t.photo].he} />
+                ) : (
+                  <span className="temoji">{t.emoji}</span>
+                )}
                 {t.label}
+                {!inGrade(t, profile.grade) && <span className="tgrade">{gradeLabel(t)}</span>}
                 {t.id !== "mix" &&
                   (s ? (
                     <span className="tprog">
@@ -3444,6 +3074,11 @@ export default function App() {
             );
           })}
         </div>
+        {others.length > 0 && (
+          <button className="moretopics" onClick={() => { sfx.click(); setShowAllTopics((v) => !v); }}>
+            {showAllTopics ? "להציג רק את הנושאים של הכיתה שלי" : `עוד ${others.length} נושאים מכיתות אחרות`}
+          </button>
+        )}
         <button className="btn ghost" onClick={goHome}>
           ⇦ חזרה לדף הבית
         </button>
@@ -3458,8 +3093,12 @@ export default function App() {
     const doneSet = new Set(profile.lessonsDone || []);
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
-        <div className="mascot">{topic.emoji}</div>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
+        {topic.photo && PHOTOS[topic.photo] ? (
+          <img className="teachphoto" src={PHOTOS[topic.photo].src} alt={PHOTOS[topic.photo].he} />
+        ) : (
+          <div className="mascot">{topic.emoji}</div>
+        )}
         <h2>{topic.label}</h2>
         <p className="sub">קודם לומדים עם בִּיפּ, אחר כך מתרגלים לבד 💪</p>
         <div className="lessonlist">
@@ -3504,12 +3143,12 @@ export default function App() {
         />
       )}
       <div className="card">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <button className="corner r" onClick={toggleMute} aria-label={muted ? "הפעלת צלילים" : "השתקה"}>
-          {muted ? "🔇" : "🔊"}
+          <Icon name={muted ? "mute" : "sound"} />
         </button>
         <button className="corner r2" onClick={toggleSpeech} aria-label={speechOn ? "כיבוי הקראה" : "הפעלת הקראה"} title="הקראה קולית">
-          {speechOn ? "🗣️" : "🤐"}
+          <Icon name={speechOn ? "speech" : "nospeech"} />
         </button>
         <Confetti burst={burst} />
         <StepPath total={total} done={course.i} current={course.i} />
@@ -3609,7 +3248,7 @@ export default function App() {
   if (screen === "course-done" && profile)
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <Confetti burst={burst} big />
         <div className="mascot">🎓</div>
         <h1>סיימת את השיעור!</h1>
@@ -3650,12 +3289,12 @@ export default function App() {
     const q = lesson.qs[lesson.i];
     return wrap(
       <div className="card">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <button className="corner r" onClick={toggleMute} aria-label={muted ? "הפעלת צלילים" : "השתקה"}>
-          {muted ? "🔇" : "🔊"}
+          <Icon name={muted ? "mute" : "sound"} />
         </button>
         <button className="corner r2" onClick={toggleSpeech} aria-label={speechOn ? "כיבוי הקראה" : "הפעלת הקראה"} title="הקראה קולית">
-          {speechOn ? "🗣️" : "🤐"}
+          <Icon name={speechOn ? "speech" : "nospeech"} />
         </button>
         <Confetti burst={burst} />
         <StepPath total={5} done={lesson.i} current={lesson.i} />
@@ -3690,7 +3329,7 @@ export default function App() {
     if (leveled) profile.leveledUp = false;
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <Confetti burst={burst} big />
         <div className="mascot">🎉</div>
         <h1>כל הכבוד, {profile.name}!</h1>
@@ -3724,7 +3363,7 @@ export default function App() {
   if (screen === "break")
     return wrap(
       <div className="card center">
-        <button className="corner" onClick={goHome} aria-label="לדף הבית">🏠</button>
+        <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
         <div className="mascot bounce">🤸</div>
         <h2>הפסקת תנועה!</h2>
         <p className="sub">

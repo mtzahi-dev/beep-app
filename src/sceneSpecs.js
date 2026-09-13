@@ -37,6 +37,15 @@ function eqScene(text, item) {
   return null;
 }
 
+// תרגיל כללי (כמה פעולות, שברים, חזקות, שורשים): מציגים את התרגיל, ובפתרון — את התשובה
+function exprScene(q) {
+  const en = String(q.en || "");
+  if (!/\d/.test(en) || HEB.test(en) || /[a-wz]{2,}/i.test(en) || !/=/.test(en)) return null;
+  const expr = en.replace(/=\s*_{2,}\s*$/, "").trim();
+  const ans = (q.options || [])[q.c];
+  return { type: "steps", lines: /_{2,}/.test(en) && ans != null ? [expr, String(ans)] : [expr] };
+}
+
 // תרגיל בתוך טקסט השאלה: "מה זה 2 × 5 בתור חיבור?"
 function inlineEq(text) {
   const m = String(text || "").match(/(\d+)\s*([×÷+−])\s*(\d+)/);
@@ -181,6 +190,7 @@ export function sceneFor(q) {
   const text = (q.q || "") + " " + (HEB.test(q.en || "") ? q.en : "");
   return (
     eqScene(q.en, q.item) ||
+    exprScene(q) ||
     piesScene(q) ||
     orbitScene(text) ||
     storyMath(text) ||
@@ -192,6 +202,7 @@ export function sceneFor(q) {
     countScene(q) ||
     choicesScene(q) ||
     factScene(q) ||
-    (q.pic ? { type: "seq", frames: [{ e: q.pic, anim: "float" }] } : null)
+    (q.pic ? { type: "seq", frames: [{ e: q.pic, anim: "float" }] } : null) ||
+    (HEB.test(q.en || "") ? { type: "seq", frames: [{ e: "📖", anim: "float" }] } : null)
   );
 }

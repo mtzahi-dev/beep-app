@@ -7,3 +7,4 @@ dist/
 .DS_Store
 Thumbs.db
 !.env.example
+/public/__photo-check.html
