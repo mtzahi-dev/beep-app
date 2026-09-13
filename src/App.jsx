@@ -503,13 +503,29 @@ function webSpeakRaw(text, lang) {
   } catch {}
 }
 
+// תרגילי חשבון בקריינות עברית: "12 ÷ 3 = 4" → "12 חלקי 3 שווה 4", "½" → "חצי".
+// סימן מוחלף רק כשיש מספר (או קו השלמה) משני צדדיו — כדי לא לגעת ב-"cat = חתול" או ב"ה-3".
+const MATH_N = "[0-9½¼¾]|_{2,}";
+const MATH_WORDS = { "+": "ועוד", "−": "פחות", "×": "כפול", "÷": "חלקי", "=": "שווה" };
+const MATH_OP_RE = new RegExp(`(${MATH_N})\\s*([+−×÷=])\\s*(?=${MATH_N})`, "g");
+const MATH_ASK_RE = /([0-9½¼¾])\s*=\s*(?:_{2,}|\?)/g;
+
+function mathToHebrew(s) {
+  return String(s)
+    .replace(MATH_ASK_RE, "$1 שווה כמה?")
+    .replace(MATH_OP_RE, (m, a, op) => `${a} ${MATH_WORDS[op]} `)
+    .replace(/½/g, " חצי ")
+    .replace(/¼/g, " רבע ")
+    .replace(/¾/g, " שלושה רבעים ");
+}
+
 // קריינות בעברית — ענן אם מוגדר, אחרת קול הדפדפן
 function speakHe(text, opts = {}) {
   if (MUTED || !SPEECH_ON) return;
   let t = String(text);
   for (const [from, to] of HEB_FIX) t = t.split(from).join(to);
-  t = cleanForSpeech(t);
-  if (!t) return;
+  t = cleanForSpeech(mathToHebrew(t));
+  if (!/[0-9A-Za-z\u0590-\u05FF]/.test(t)) return; // רק סימנים ואימוג'ים — אין מה להקריא
   if (cloudSpeak(t, "he", opts)) return;
   if (!opts.queue) stopAllSpeech();
   webSpeakRaw(t, "he");
@@ -525,10 +541,11 @@ function speak(text, opts = {}) {
   webSpeakRaw(t, "en");
 }
 
-// הקראת תוכן בשפה המתאימה
+// הקראת תוכן בשפה המתאימה: אנגלית רק כשיש אותיות באנגלית ואין עברית —
+// תרגיל חשבון (מספרים וסימנים בלבד) נקרא בעברית
 function speakAny(text, opts = {}) {
-  if (isHeb(text)) speakHe(text, opts);
-  else speak(text, opts);
+  if (hasEnglish(text) && !isHeb(text)) speak(text, opts);
+  else speakHe(text, opts);
 }
 
 // ---------- צלילי חיווי (Web Audio — מסונתזים, בלי קבצים, עובד גם offline) ----------
