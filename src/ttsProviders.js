@@ -14,13 +14,23 @@ export const AZURE_VOICES = {
   Avri: { gender: "MALE", he: "he-IL-AvriNeural", en: "en-US-AndrewNeural" },
 };
 
+// WaveNet: המנוע הוותיק של Google — פחות "טבעי", אבל מבטא עברית מדויק יותר (נבחר בהאזנה)
+const WAVENET = /^Wavenet-[A-D]$/;
+// באנגלית ממשיכים עם קול Chirp טבעי מאותו מין
+const WAVENET_EN = { A: "Aoede", B: "Charon", C: "Kore", D: "Puck" };
+
 export function defaultVoice(provider) {
-  return provider === "azure" ? "Hila" : "Charon";
+  return provider === "azure" ? "Hila" : "Wavenet-B";
 }
 
 export function cleanVoice(provider, voice) {
   if (provider === "azure") return AZURE_VOICES[voice] ? voice : "Hila";
-  return /^[A-Za-z]{2,24}$/.test(voice || "") ? voice : "Charon";
+  return WAVENET.test(voice || "") || /^[A-Za-z]{2,24}$/.test(voice || "") ? voice : "Wavenet-B";
+}
+
+function googleVoiceName(v, he) {
+  if (WAVENET.test(v)) return he ? `he-IL-${v}` : `en-US-Chirp3-HD-${WAVENET_EN[v.slice(-1)]}`;
+  return `${he ? "he-IL" : "en-US"}-Chirp3-HD-${v}`;
 }
 
 async function errDetail(res) {
@@ -63,9 +73,9 @@ export async function synthesize({ provider, key, region }, { text, lang, voice 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         input: { text },
-        voice: { languageCode: locale, name: `${locale}-Chirp3-HD-${v}` },
+        voice: { languageCode: locale, name: googleVoiceName(v, he) },
         // קצב רגוע מעט — נוח לילדים עם קשיי קשב
-        audioConfig: { audioEncoding: "MP3", speakingRate: he ? 0.92 : 0.88 },
+        audioConfig: { audioEncoding: "MP3", speakingRate: he ? (WAVENET.test(v) ? 0.9 : 0.92) : 0.88 },
       }),
     }
   );
@@ -87,11 +97,17 @@ export async function listVoices({ provider, key }) {
   );
   if (!res.ok) throw new Error("Google " + res.status + (await errDetail(res)));
   const data = await res.json();
-  const all = (data.voices || [])
+  const voices = data.voices || [];
+  // קודם WaveNet (הגייה מדויקת, B ראשון), אחריהם קולות Chirp הטבעיים
+  const wavenet = voices
+    .filter((v) => /^he-IL-Wavenet-[A-D]$/.test(v.name))
+    .map((v) => ({ id: v.name.slice("he-IL-".length), gender: v.ssmlGender }))
+    .sort((a, b) => (a.id === "Wavenet-B" ? -1 : b.id === "Wavenet-B" ? 1 : a.id.localeCompare(b.id)));
+  const all = voices
     .filter((v) => /^he-IL-Chirp3-HD-/.test(v.name))
     .map((v) => ({ id: v.name.slice("he-IL-Chirp3-HD-".length), gender: v.ssmlGender }));
   const picks = all
     .filter((v) => GOOGLE_PICKS.includes(v.id))
     .sort((a, b) => GOOGLE_PICKS.indexOf(a.id) - GOOGLE_PICKS.indexOf(b.id));
-  return picks.length >= 2 ? picks : all;
+  return [...wavenet, ...(picks.length >= 2 ? picks : all)];
 }

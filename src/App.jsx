@@ -1797,7 +1797,7 @@ export default function App() {
           }
         } catch {}
       }
-      const vc = await storGet("lomi:voice");
+      const vc = await storGet("lomi:voice2"); // v2: בחירות קול ישנות (Charon) לא גוברות על WaveNet B
       if (vc) {
         TTS_VOICE = vc;
         setTtsVoice(vc);
@@ -2318,7 +2318,7 @@ export default function App() {
     sfx.click();
     TTS_VOICE = id;
     setTtsVoice(id);
-    await storSet("lomi:voice", id);
+    await storSet("lomi:voice2", id);
     stopAllSpeech();
     setTtsStatus("");
     try {
@@ -3200,7 +3200,7 @@ export default function App() {
                       className={"chip voice" + (cur === v.id ? " on" : "")}
                       onClick={() => pickVoice(v.id)}
                     >
-                      {v.gender === "MALE" ? "👨" : "👩"} {v.id}
+                      {v.gender === "MALE" ? "👨" : "👩"} {v.id.replace("Wavenet-", "WaveNet ")}
                     </button>
                   );
                 })}
