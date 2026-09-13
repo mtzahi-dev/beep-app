@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#6D5AE6" />
+    <link rel="icon" href="/beep.ico" />
+    <title>בִּיפּ · לומדים בכיף בקצב שלך</title>
+    <style>
+      html, body, #root { margin: 0; padding: 0; }
+      html { background: #EEF6FC; }
+      body {
+        overscroll-behavior: none;      /* בלי גומי-גלילה במובייל */
+        overflow-x: hidden;             /* אף פעם לא גלילה לצדדים */
+        -webkit-tap-highlight-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
