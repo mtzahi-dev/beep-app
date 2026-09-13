@@ -1559,6 +1559,34 @@ function courseCheer(i, total, name) {
 
 // ---------- מסך שאלה (משותף לאבחון ולשיעור) ----------
 
+// מקלדת קוד הורים: 4 נקודות + ספרות (כניסה לאזור ההורים ומחיקת לומד)
+function PinPad({ value, err, onDigit, onBack }) {
+  return (
+    <>
+      <div className="pindots">
+        {[0, 1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={"pindot" + (value.length > i ? " full" : "") + (err ? " err" : "")}
+          />
+        ))}
+      </div>
+      <div className="pinpad">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
+          <button key={d} className="pinkey" onClick={() => onDigit(String(d))}>
+            {d}
+          </button>
+        ))}
+        <span />
+        <button className="pinkey" onClick={() => onDigit("0")}>0</button>
+        <button className="pinkey" onClick={onBack} aria-label="מחיקת ספרה">
+          ⌫
+        </button>
+      </div>
+    </>
+  );
+}
+
 function QuestionCard({ q, onAnswer, phase, selected }) {
   const answered = phase !== "idle";
   const hasBlank = /_{2,}/.test(q.en || "");
@@ -1642,6 +1670,8 @@ export default function App() {
   const [serverTts, setServerTts] = useState(null);
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState(false);
+  const [delPin, setDelPin] = useState("");
+  const [delPinErr, setDelPinErr] = useState(false);
   const [kidSel, setKidSel] = useState(0);
 
   // הקמה
@@ -2303,25 +2333,43 @@ export default function App() {
     }
   }
 
-  function pressPin(d) {
+  // הקשת ספרה בקוד ההורים — משותף לכניסה לאזור ההורים ולמחיקת לומד
+  function typePin(cur, setCur, setErr, d, onOk) {
     sfx.click();
-    setPinErr(false);
-    const next = (pin + d).slice(0, 4);
-    setPin(next);
-    if (next.length === 4) {
-      if (next === PARENT_CODE) {
-        sfx.correct();
-        setKidSel(0);
-        setScreen("parents");
-      } else {
-        sfx.wrong();
-        setPinErr(true);
-        later(() => {
-          setPin("");
-          setPinErr(false);
-        }, 650);
-      }
+    setErr(false);
+    const next = (cur + d).slice(0, 4);
+    setCur(next);
+    if (next.length < 4) return;
+    if (next === PARENT_CODE) {
+      onOk();
+    } else {
+      sfx.wrong();
+      setErr(true);
+      later(() => {
+        setCur("");
+        setErr(false);
+      }, 650);
     }
+  }
+
+  function pressPin(d) {
+    typePin(pin, setPin, setPinErr, d, () => {
+      sfx.correct();
+      setKidSel(0);
+      setScreen("parents");
+    });
+  }
+
+  // מחיקת לומד מחייבת קוד הורים
+  function askDelete(u) {
+    sfx.pop();
+    setDelPin("");
+    setDelPinErr(false);
+    setConfirmDel(u);
+  }
+
+  function pressDelPin(d) {
+    typePin(delPin, setDelPin, setDelPinErr, d, () => deleteUser(confirmDel));
   }
 
   // רישום שאלות שהוצגו — כדי שתרגול נוסף לא יחזור על אותן שאלות
@@ -2535,7 +2583,7 @@ export default function App() {
       .overlay { position:fixed; inset:0; background:rgba(32,48,90,.45); display:flex; align-items:center;
         justify-content:center; z-index:50; padding:20px; }
       .dialog { background:#fff; border-radius:22px; padding:24px 20px; max-width:340px; width:100%;
-        text-align:center; animation:pop .3s ease; }
+        text-align:center; animation:pop .3s ease; max-height:100%; overflow-y:auto; }
       .btn.danger { background:var(--coral); box-shadow:0 5px 0 var(--coral-d); }
 
       .corner.r { left:auto; right:10px; }
@@ -2950,7 +2998,7 @@ export default function App() {
                 className="udel"
                 aria-label={`מחיקת ${u.name}`}
                 title={`מחיקת ${u.name}`}
-                onClick={() => { sfx.pop(); setConfirmDel(u); }}
+                onClick={() => askDelete(u)}
               >
                 ✕
               </button>
@@ -2964,10 +3012,13 @@ export default function App() {
             <div className="dialog" onClick={(e) => e.stopPropagation()}>
               <div className="mascot">🗑️</div>
               <h2>למחוק את {confirmDel.name}?</h2>
-              <p className="sub">כל הכוכבים וההתקדמות יימחקו לתמיד.</p>
-              <button className="btn danger" onClick={() => deleteUser(confirmDel)}>
-                כן, למחוק
-              </button>
+              <p className="sub">כל הכוכבים וההתקדמות יימחקו לתמיד. כדי למחוק, הקישו את קוד ההורים.</p>
+              <PinPad
+                value={delPin}
+                err={delPinErr}
+                onDigit={pressDelPin}
+                onBack={() => { sfx.click(); setDelPin(delPin.slice(0, -1)); }}
+              />
               <button className="btn ghost" onClick={() => { sfx.click(); setConfirmDel(null); }}>
                 ביטול
               </button>
@@ -2986,26 +3037,12 @@ export default function App() {
         <div className="mascot">🔒</div>
         <h2>אזור הורים</h2>
         <p className="sub">הקישו את קוד ההורים בן 4 הספרות</p>
-        <div className="pindots">
-          {[0, 1, 2, 3].map((i) => (
-            <span
-              key={i}
-              className={"pindot" + (pin.length > i ? " full" : "") + (pinErr ? " err" : "")}
-            />
-          ))}
-        </div>
-        <div className="pinpad">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
-            <button key={d} className="pinkey" onClick={() => pressPin(String(d))}>
-              {d}
-            </button>
-          ))}
-          <span />
-          <button className="pinkey" onClick={() => pressPin("0")}>0</button>
-          <button className="pinkey" onClick={() => { sfx.click(); setPin(pin.slice(0, -1)); }} aria-label="מחיקת ספרה">
-            ⌫
-          </button>
-        </div>
+        <PinPad
+          value={pin}
+          err={pinErr}
+          onDigit={pressPin}
+          onBack={() => { sfx.click(); setPin(pin.slice(0, -1)); }}
+        />
       </div>
     );
 
