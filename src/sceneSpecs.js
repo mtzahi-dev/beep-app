@@ -1,7 +1,7 @@
 // איור אוטומטי לכל תרגיל: מזהה מספרים, חפצים, דמויות ופעולות — ומחזיר תיאור סצנה מונפשת.
 // מבנה: { type, ...פרמטרים }. הסצנה מוצגת במצב "setup" (הנתונים) ובמצב "solve" (הפתרון מונפש).
 
-import { heEmoji, enEmoji, enPerson, enVerb, enTime } from "./sceneLexicon.js";
+import { heEmoji, enEmoji, enPerson, enVerb, enTime, emojisIn } from "./sceneLexicon.js";
 
 const EQ_RE = /^\s*(\d+|½|¼)\s*([+−×÷\-x*])\s*(\d+)\s*=\s*(_{2,}|\?|\d+)\s*$/;
 const HEB = /[א-ת]/;
@@ -98,19 +98,26 @@ function countScene(q) {
   return m && HE_NUM[m[1]] ? { type: "count", n: HE_NUM[m[1]], item: "⭐" } : null;
 }
 
+// "מה הפירוש של dog?" — תמונה של המילה היא התשובה עצמה. מציגים את המילה, והתמונה מגיעה בפתרון
+function meaningWord(q) {
+  if (!/פירוש/.test(q.q || "")) return null;
+  const en = String(q.en || "").trim();
+  if (/^[A-Za-z]+([ '-][A-Za-z]+)?$/.test(en)) return en;
+  const m = String(q.q).match(/[A-Za-z]+([ '-][A-Za-z]+)?/);
+  return m ? m[0] : null;
+}
+
 // ברירת מחדל: הדמויות/החפצים מהשאלה, והתשובה נחשפת בפתרון
 function factScene(q) {
   const answer = (q.options || [])[q.c];
-  const ansE = String(answer || "").split(/\s+/).map((w) => heEmoji(w) || enEmoji(w)).find(Boolean) || null;
+  const ansE = emojisIn(answer)[0] || null;
   if (/·/.test(q.en || "")) {
     const tokens = q.en.split("·").map((s) => s.trim());
     return { type: "fact", tokens, answer, ansE };
   }
-  const items = [];
-  for (const w of String(q.q || "").split(/\s+/)) {
-    const e = heEmoji(w) || enEmoji(w);
-    if (e && !items.includes(e)) items.push(e);
-  }
+  const word = meaningWord(q);
+  if (word) return { type: "fact", tokens: [word, "=", "___"], answer, ansE };
+  const items = [...new Set(emojisIn(q.q))];
   if (!items.length && q.pic) items.push(q.pic);
   if (!items.length) return null;
   return { type: "fact", items: items.slice(0, 3), answer, ansE };
@@ -172,7 +179,7 @@ function choicesScene(q) {
   if (!opts.length || !opts.every((o) => HEB.test(o)) || WORD_Q.test(q.q || "")) return null;
   const items = opts.map((o) => {
     const words = String(o).split(/\s+/);
-    const e = HEB.test(o) ? words.map(heEmoji).find(Boolean) : enEmoji(o) || words.map(enEmoji).find(Boolean);
+    const e = HEB.test(o) ? emojisIn(o)[0] : enEmoji(o) || words.map(enEmoji).find(Boolean);
     return { e, cap: o };
   });
   if (items.filter((x) => x.e).length < Math.min(3, opts.length)) return null;
@@ -185,18 +192,13 @@ function storyScene(q) {
   const text = String(q.en || "");
   const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim());
   if (!sentences.length || (!HEB.test(text) && sentences.length < 2 && !q.q.includes("קרא"))) return null;
-  const toEmoji = HEB.test(text) ? heEmoji : (w) => enPerson(w) || enEmoji(w);
+  const heb = HEB.test(text);
   const panels = sentences.map((s) => {
-    const es = [];
-    for (const w of s.split(/\s+/)) {
-      const e = toEmoji(w);
-      if (e && !es.includes(e)) es.push(e);
-    }
-    return es.slice(0, 4);
+    const found = heb ? emojisIn(s) : s.split(/\s+/).map((w) => enPerson(w) || enEmoji(w));
+    return [...new Set(found.filter(Boolean))].slice(0, 4);
   }).filter((p) => p.length);
   if (panels.flat().length < 2) return null;
-  const ansWords = String((q.options || [])[q.c] || "").split(/\s+/);
-  const ans = ansWords.map((w) => heEmoji(w) || enEmoji(w)).find(Boolean) || null;
+  const ans = emojisIn((q.options || [])[q.c])[0] || null;
   return { type: "story", panels, ans };
 }
 

@@ -96,8 +96,8 @@ export function Pairs({ sc, playing, playKey }) {
   );
 }
 
-// חלל: שנה (הקפת השמש), יום ולילה (סיבוב), ירח שמחזיר אור
-export function Orbit({ sc }) {
+// חלל: שנה (הקפת השמש), יום ולילה (סיבוב), ירח שמחזיר אור. ההסבר הוא התשובה ("שנה") — מופיע רק בפתרון
+export function Orbit({ sc, playing }) {
   const mode = sc.mode || "year";
   if (mode === "day") {
     return (
@@ -117,7 +117,7 @@ export function Orbit({ sc }) {
       <div className="sorbit-path" />
       <Spr e={center} x={50} y={47} w={20} h={36} cls={mode === "year" ? "glow" : ""} />
       <div className="sorbit"><span className="sorbit-body">{body}</span></div>
-      <Badge x={50} y={93} text={mode === "year" ? "סיבוב אחד = שנה 🎆" : "הירח מחזיר את אור השמש 💡"} />
+      <Badge x={50} y={93} text={mode === "year" ? "סיבוב אחד = שנה 🎆" : "הירח מחזיר את אור השמש 💡"} show={playing} />
     </>
   );
 }
@@ -195,12 +195,19 @@ export function Story({ sc, playing, playKey }) {
 export function Fact({ sc, playing, playKey }) {
   const beat = useBeats(1, 700, playing, playKey);
   const solved = beat >= 1;
+  // כשהתשובה היא סימן שאלה (פיסוק), ❓ על המסך היה רמז — מחכים עם 🤔
+  const askMark = sc.ansE === "❓" || /\?/.test(String(sc.answer || ""));
+  const waitE = askMark ? "🤔" : "❓";
+  const waitT = askMark ? "…" : "?";
   if (sc.tokens) {
+    // "dog = ?" — התמונה של המילה מופיעה רק בפתרון
+    const pic = solved && sc.ansE;
     return (
       <>
+        {pic && <Spr e={sc.ansE} x={50} y={30} w={20} h={42} cls="win" />}
         {sc.tokens.map((t, i) => {
           const blank = /_{2,}/.test(t);
-          return <Badge key={i} x={spread(i, sc.tokens.length)} y={45} tone={"tile" + (blank && solved ? " good" : "")} text={blank ? (solved ? sc.answer : "?") : t} />;
+          return <Badge key={i} x={spread(i, sc.tokens.length)} y={pic ? 76 : 45} tone={"tile" + (blank && solved ? " good" : "")} text={blank ? (solved ? sc.answer : waitT) : t} />;
         })}
       </>
     );
@@ -212,8 +219,8 @@ export function Fact({ sc, playing, playKey }) {
         <Spr key={i} e={e} x={n === 1 ? 30 : 12 + (i * 44) / Math.max(1, n - 1)} y={40} w={Math.min(50 / n, 26)} h={58}
           cls="pop float" style={{ animationDelay: i * 120 + "ms" }} />
       ))}
-      <Spr e={solved ? sc.ansE || "💡" : "❓"} x={80} y={38} w={26} h={56} cls={solved ? "win" : "bob"} key={solved ? "a" : "q"} />
-      <Badge x={80} y={88} text={solved ? sc.answer : "?"} tone={solved ? "good" : ""} />
+      <Spr e={solved ? sc.ansE || "💡" : waitE} x={80} y={38} w={26} h={56} cls={solved ? "win" : "bob"} key={solved ? "a" : "q"} />
+      <Badge x={80} y={88} text={solved ? sc.answer : waitT} tone={solved ? "good" : ""} />
     </>
   );
 }

@@ -72,6 +72,43 @@ export function heEmoji(word) {
   return null;
 }
 
+// צירוף של שתי מילים ("כדור הארץ", "בבית הספר") — מילה-מילה יצא ⚽ לכדור הארץ ו-🏠📖 לבית הספר
+const HE_PHRASES = {
+  "גן חיות": "🦁", "גן ילדים": "🧸", "כוכב לכת": "🪐", "כוכב חמה": "🪐", "מערכת השמש": "🪐",
+  "ארוחת בוקר": "🍳", "ארוחת ערב": "🍽️", "בית חולים": "🏥", "קשת בענן": "🌈", "חוף הים": "🏖️",
+};
+function phraseEmoji(a, b) {
+  const clean = (s) => String(s || "").replace(/[֑-ׇ"'׳״.,!?:;()]/g, "");
+  const A = clean(a);
+  const B = clean(b);
+  if (A.length < 2 || B.length < 2) return null;
+  const firsts = [A];
+  for (let i = 1; i <= 2 && i < A.length - 1; i++) if (/[והבלמשכ]/.test(A[i - 1])) firsts.push(A.slice(i));
+  else break;
+  const seconds = B[0] === "ה" && B.length > 2 ? [B, B.slice(1)] : [B];
+  for (const f of firsts) {
+    for (const s of seconds) {
+      const k = `${f} ${s}`;
+      if (HE_EMOJI.has(k)) return HE_EMOJI.get(k);
+      if (HE_PHRASES[k]) return HE_PHRASES[k];
+    }
+  }
+  return null;
+}
+
+// כל התמונות שבטקסט לפי הסדר: קודם צירופים, ואז מילה בודדת (עברית או אנגלית)
+export function emojisIn(text) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const out = [];
+  for (let i = 0; i < words.length; i++) {
+    const p = i + 1 < words.length ? phraseEmoji(words[i], words[i + 1]) : null;
+    if (p) { out.push(p); i++; continue; }
+    const e = heEmoji(words[i]) || enEmoji(words[i]);
+    if (e) out.push(e);
+  }
+  return out;
+}
+
 const EN_EXTRA = {
   school: "🏫", pizza: "🍕", soccer: "⚽", box: "📦", toys: "🧸", beach: "🏖️", movie: "🎬", sandcastle: "🏰",
   homework: "📚", grandma: "👵", music: "🎵", class: "🎒", sky: "⛅", grass: "🌿", roof: "🏠", tv: "📺",
