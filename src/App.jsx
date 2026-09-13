@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { synthesize, cleanVoice, defaultVoice } from "./ttsProviders.js";
 import { numbersToHebrew } from "./hebNumbers.js";
-import { Scene, SceneOverlay, sceneFor, registerWords } from "./Scenes.jsx";
+import { Scene, SceneOverlay, sceneFor, setupSafe, registerWords } from "./Scenes.jsx";
 import "./app.css";
 import { TOPICS, inGrade, gradeLabel, TOPIC_ALIASES } from "./curriculum/topics.js";
 import { practiceFor, mixPractice } from "./curriculum/practice.js";
@@ -1615,6 +1615,8 @@ function QuestionCard({ q, onAnswer, phase, selected }) {
   const hasBlank = /_{2,}/.test(q.en || "");
   const reveal = answered && hasBlank ? q.options[q.c] : null;
   const sc = useMemo(() => sceneFor(q), [q]);
+  // לפני שעונים: בלי כיתובים שחושפים את התשובה
+  const safeSc = useMemo(() => setupSafe(sc, q.options[q.c]), [sc, q]);
 
   // הקראה אוטומטית: ההנחיה בעברית, ואז המשפט המלא (אנגלית או עברית)
   useEffect(() => {
@@ -1625,7 +1627,7 @@ function QuestionCard({ q, onAnswer, phase, selected }) {
 
   return (
     <div className="qcard">
-      {sc ? <Scene sc={sc} playing={answered} /> : <Pic emoji={q.pic} happy={phase === "right"} />}
+      {sc ? <Scene sc={answered ? sc : safeSc} playing={answered} /> : <Pic emoji={q.pic} happy={phase === "right"} />}
       <div className="qtext">
         <AnimText text={q.q} canSpeak />
       </div>

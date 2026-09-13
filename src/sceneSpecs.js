@@ -5,6 +5,32 @@ import { heEmoji, enEmoji, enPerson, enVerb, enTime } from "./sceneLexicon.js";
 
 const EQ_RE = /^\s*(\d+|½|¼)\s*([+−×÷\-x*])\s*(\d+)\s*=\s*(_{2,}|\?|\d+)\s*$/;
 const HEB = /[א-ת]/;
+// שאלה שמדברת על "התמונה" — חייבים להציג בדיוק את התמונה שלה
+const PICTURE_Q = /תמונה/;
+// שאלות על מילים, אותיות, תרגום או תמונה — איור של התשובות (עם כיתוב) היה חושף או מבלבל
+const WORD_Q = /(^|[\s'"])(ה?מילה|מילים|ה?אות|אותיות|ה?משפט|מתחרזת?|ל?ב?תמונה)(?=[\s'"?.,:]|$)|איך אומרים|איך כותבים|פירוש/;
+
+// מצב פתיחה של שאלה: מסתירים כיתובים שחושפים את התשובה (היא מתגלה רק אחרי שעונים)
+const normText = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+export function revealsAnswer(text, answer) {
+  const t = normText(text), a = normText(answer);
+  if (!a || !t) return false;
+  // תשובה מספרית: רק התאמה מלאה (מספר מהנתונים שבמקרה שווה לתשובה — לא חשיפה)
+  if (/^[−-]?\d+([./:]\d+)?%?$/.test(String(answer).trim())) return t === a;
+  return t === a || ` ${t} `.includes(` ${a} `);
+}
+export function setupSafe(sc, answer) {
+  if (!sc || answer == null || sc.type === "choices") return sc;
+  const hide = (v) => (typeof v === "string" && revealsAnswer(v, answer) ? "?" : v);
+  const out = { ...sc };
+  if (Array.isArray(sc.frames)) out.frames = sc.frames.map((f) => ({ ...f, cap: f.cap != null ? hide(f.cap) : f.cap }));
+  if (Array.isArray(sc.pairs)) out.pairs = sc.pairs.map((p) => p.map(hide));
+  if (Array.isArray(sc.tokens)) out.tokens = sc.tokens.map(hide);
+  if (Array.isArray(sc.bins)) out.bins = sc.bins.map((b) => ({ ...b, cap: hide(b.cap) }));
+  if (sc.label) out.label = hide(sc.label);
+  if (sc.cap) out.cap = hide(sc.cap);
+  return out;
+}
 
 // ---- חשבון: תרגיל → סצנה ----
 export function mathScene(a, op, b, item) {
@@ -125,9 +151,11 @@ function placeScene(q) {
 
 // ---- אנגלית: משפט → מי + פעולה + מה + מתי ----
 function sentenceScene(q) {
-  const answer = q.options && q.options[q.c];
-  const en = String(q.en || "").replace(/_{2,}/, answer || "");
-  if (!en || HEB.test(en) || !/[a-z]/i.test(en)) return null;
+  // את המילה החסרה לא מציירים — אחרת האיור חושף את התשובה
+  const en = String(q.en || "").replace(/_{2,}/, " ");
+  if (!en.trim() || HEB.test(en) || !/[a-z]/i.test(en)) return null;
+  // מילה בודדת (אוצר מילים) היא לא משפט — לא מציירים לה ציר זמן
+  if (en.trim().split(/\s+/).filter((w) => /[a-z]/i.test(w)).length < 2) return null;
   const words = en.split(/\s+/).map((w) => w.replace(/[^a-z']/gi, ""));
   const who = words.map((w, i) => enPerson(w) || (i < 3 ? enEmoji(w) : null)).find(Boolean);
   const act = words.map(enVerb).find(Boolean);
@@ -140,12 +168,15 @@ function sentenceScene(q) {
 // ---- תשובות מאוירות: כל אפשרות מקבלת תמונה, בפתרון הנכונה קופצת ----
 function choicesScene(q) {
   const opts = q.options || [];
+  // רק כשכל התשובות בעברית והשאלה לא עוסקת במילים/אותיות/תמונה/תרגום
+  if (!opts.length || !opts.every((o) => HEB.test(o)) || WORD_Q.test(q.q || "")) return null;
   const items = opts.map((o) => {
     const words = String(o).split(/\s+/);
     const e = HEB.test(o) ? words.map(heEmoji).find(Boolean) : enEmoji(o) || words.map(enEmoji).find(Boolean);
     return { e, cap: o };
   });
-  if (items.filter((x) => x.e).length < Math.min(2, opts.length)) return null;
+  if (items.filter((x) => x.e).length < Math.min(3, opts.length)) return null;
+  if (new Set(items.filter((x) => x.e).map((x) => x.e)).size < items.filter((x) => x.e).length) return null;
   return { type: "choices", items: items.map((x) => ({ ...x, e: x.e || "❔" })), answer: q.c };
 }
 
@@ -187,6 +218,7 @@ function oppositeScene(q) {
 export function sceneFor(q) {
   if (!q) return null;
   if (q.scene) return q.scene;
+  if (q.pic && PICTURE_Q.test(q.q || "")) return { type: "seq", frames: [{ e: q.pic, anim: "float" }] };
   const text = (q.q || "") + " " + (HEB.test(q.en || "") ? q.en : "");
   return (
     eqScene(q.en, q.item) ||

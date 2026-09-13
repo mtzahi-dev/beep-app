@@ -447,7 +447,7 @@ M.percent = (lv) => {
   }
   const p = pick([10, 20, 25, 50, 75]), whole = pick([20, 40, 60, 80, 200]), part = (whole * p) / 100;
   return { q: `${part} מתוך ${whole} — כמה אחוזים זה?`, ...opts(`${p}%`, [`${p * 2 > 100 ? p / 2 : p * 2}%`, `${part}%`, `${100 - p}%`]),
-    ex: `${part} ÷ ${whole} = ${p / 100} = ${p}%`, scene: { type: "fracbar", ...barOf(p), label: `${part} מתוך ${whole} = ${p}%` } };
+    ex: `${part} ÷ ${whole} = ${p / 100} = ${p}%`, scene: { type: "steps", lines: [`${part} ÷ ${whole}`, `${p / 100}`, `${p}%`] } };
 };
 
 function coprimePair() {

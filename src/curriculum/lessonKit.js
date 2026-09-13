@@ -2,7 +2,11 @@
 
 const shuffle = (a) => [...a].sort(() => Math.random() - 0.5);
 
-export const lesson = (id, title, emoji, steps) => ({ id, title, emoji, min: 1, steps });
+// שאלת בדיקה בלי איור משלה מקבלת את האימוג'י של השיעור — אף שאלה לא נשארת בלי תמונה
+export const lesson = (id, title, emoji, steps) => ({
+  id, title, emoji, min: 1,
+  steps: steps.map((st) => (st.t === "q" && !st.scene && !st.pic ? { ...st, pic: emoji } : st)),
+});
 
 export const teach = (title, body, scene, extra = {}) => ({ t: "teach", title, body, scene, ...extra });
 

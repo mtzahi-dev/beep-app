@@ -6,7 +6,7 @@ import { ArrayScene, Blocks, Frac, Compare, Ten } from "./scenesMath2.jsx";
 import { Seq, Time, Place, Pairs, Orbit, Sort, Choices, Story, Fact, Pies, Count, Photo } from "./scenesWorld.jsx";
 import { PlaceValue, Column, Rect, AreaModel, FracBar, NumLine, Balance, Steps, Angle, Bars, Items, RatioBar, LongDiv, Graph } from "./scenesMath3.jsx";
 
-export { sceneFor } from "./sceneSpecs.js";
+export { sceneFor, setupSafe } from "./sceneSpecs.js";
 export { registerWords } from "./sceneLexicon.js";
 
 const TYPES = {

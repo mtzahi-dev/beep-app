@@ -86,7 +86,7 @@ export function Frac({ sc, playing, playKey }) {
   return (
     <>
       <div className="spie" style={{ left: "50%" }}>
-        <PieSvg parts={sc.parts} take={beat >= 1 ? sc.take : 0} />
+        <PieSvg parts={sc.parts} take={!playing || beat >= 1 ? sc.take : 0} />
       </div>
       <Badge x={50} y={93} text={`${sc.take}/${sc.parts}`} tone="big" show={beat >= 2} />
     </>

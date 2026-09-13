@@ -251,7 +251,7 @@ export function Count({ sc, playing, playKey }) {
 }
 
 // תמונה אמיתית: זום איטי (קן ברנס) וכיתוב; אם התמונה לא נטענת — אימוג'י גדול במקומה
-export function Photo({ sc }) {
+export function Photo({ sc, playing }) {
   const [broken, setBroken] = useState(false);
   return (
     <>
@@ -260,7 +260,8 @@ export function Photo({ sc }) {
       ) : (
         <img className="sphoto" src={sc.src} alt={sc.alt || ""} loading="lazy" onError={() => setBroken(true)} />
       )}
-      {sc.cap && <Badge x={50} y={88} text={sc.cap} tone="tile" />}
+      {/* בשאלה — הכיתוב מופיע רק אחרי שעונים, כדי שלא יסגיר את התשובה */}
+      {sc.cap && playing && <Badge x={50} y={88} text={sc.cap} tone="tile" />}
     </>
   );
 }
