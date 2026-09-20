@@ -226,8 +226,9 @@ h2 { font-size:23px; font-weight:800; line-height:1.3; letter-spacing:-.2px; }
 .sayall:hover { border-color:#CBC2FF; background:var(--purple-l); }
 .sayall:active { transform:scale(.92); }
 
+/* הטקסט תמיד קריא: האנימציה מזיזה בלבד. אם היא מתעכבת או לא רצה — המילים עדיין על המסך */
 .word { display:inline-block; animation:wordin .45s both; }
-@keyframes wordin { from{opacity:0; transform:translateY(8px) scale(.8)} to{opacity:1; transform:none} }
+@keyframes wordin { from{transform:translateY(8px) scale(.86)} to{transform:none} }
 .word.speakable { cursor:pointer; border-bottom:2px dotted transparent; transition:color .12s; }
 .word.speakable:hover { color:var(--purple); border-bottom-color:var(--purple); }
 .word.wiggle { animation:wiggle .6s; color:var(--purple); }

@@ -1,7 +1,7 @@
 // איור אוטומטי לכל תרגיל: מזהה מספרים, חפצים, דמויות ופעולות — ומחזיר תיאור סצנה מונפשת.
 // מבנה: { type, ...פרמטרים }. הסצנה מוצגת במצב "setup" (הנתונים) ובמצב "solve" (הפתרון מונפש).
 
-import { heEmoji, enEmoji, enPerson, enVerb, enTime, emojisIn } from "./sceneLexicon.js";
+import { heEmoji, enEmoji, enThing, enPerson, enVerb, enTime, emojisIn } from "./sceneLexicon.js";
 
 const EQ_RE = /^\s*(\d+|½|¼)\s*([+−×÷\-x*])\s*(\d+)\s*=\s*(_{2,}|\?|\d+)\s*$/;
 const HEB = /[א-ת]/;
@@ -151,7 +151,8 @@ function placeScene(q) {
   if (!/^(in|on|under)$/.test(answer || "")) return null;
   const words = en.split(/\s+/);
   const blank = words.findIndex((w) => /_{2,}/.test(w));
-  const thing = words.slice(0, blank).map(enEmoji).filter(Boolean).pop() || "⚽";
+  const before = words.slice(0, blank);
+  const thing = before.map(enThing).filter(Boolean).pop() || before.map(enEmoji).filter(Boolean).pop() || "⚽";
   const refWord = words.slice(blank + 1).map((w) => w.replace(/[^a-z]/gi, "").toLowerCase()).filter((w) => w && w !== "the").pop();
   return { type: "place", thing, ref: refWord === "table" ? "TABLE" : enEmoji(refWord) || "📦", where: answer };
 }
@@ -164,9 +165,12 @@ function sentenceScene(q) {
   // מילה בודדת (אוצר מילים) היא לא משפט — לא מציירים לה ציר זמן
   if (en.trim().split(/\s+/).filter((w) => /[a-z]/i.test(w)).length < 2) return null;
   const words = en.split(/\s+/).map((w) => w.replace(/[^a-z']/gi, ""));
-  const who = words.map((w, i) => enPerson(w) || (i < 3 ? enEmoji(w) : null)).find(Boolean);
+  const who = words.map((w, i) => enPerson(w) || (i < 3 ? enThing(w) : null)).find(Boolean);
   const act = words.map(enVerb).find(Boolean);
-  const objs = words.slice(1).map(enEmoji).filter((e) => e && e !== who && e !== act);
+  const objOf = (pick) => words.slice(1).map(pick).filter((e) => e && e !== who && e !== act);
+  const things = objOf(enThing);
+  // מילת תיאור ("small", "fast") מציירת את עצמה רק כשאין במשפט שום חפץ או דמות
+  const objs = things.length || who ? things : objOf(enEmoji);
   const when = enTime(en);
   if (!who && !objs.length) return null;
   return { type: "time", who: who || "🙋", act: act || null, obj: objs[0] || null, when };
@@ -193,8 +197,14 @@ function storyScene(q) {
   const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim());
   if (!sentences.length || (!HEB.test(text) && sentences.length < 2 && !q.q.includes("קרא"))) return null;
   const heb = HEB.test(text);
+  // בחלונית מציירים את מי שיש במשפט; מילת תיאור ("tired") רק כשאין בה שום חפץ
+  const enPanel = (s) => {
+    const ws = s.split(/\s+/);
+    const things = ws.map((w) => enPerson(w) || enThing(w)).filter(Boolean);
+    return things.length ? things : ws.map((w) => enPerson(w) || enEmoji(w));
+  };
   const panels = sentences.map((s) => {
-    const found = heb ? emojisIn(s) : s.split(/\s+/).map((w) => enPerson(w) || enEmoji(w));
+    const found = heb ? emojisIn(s) : enPanel(s);
     return [...new Set(found.filter(Boolean))].slice(0, 4);
   }).filter((p) => p.length);
   if (panels.flat().length < 2) return null;

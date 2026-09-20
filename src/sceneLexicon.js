@@ -142,6 +142,18 @@ export function enEmoji(word) {
 export const enPerson = (word) => EN_PEOPLE[String(word || "").toLowerCase()] || null;
 export const enVerb = (word) => EN_VERBS[String(word || "").toLowerCase()] || null;
 
+// מילות תיאור: לאימוג'י שלהן ("small" → 🐭) יש מקום בשאלות אוצר מילים, אבל הן לא החפץ שבמשפט
+const EN_MODIFIERS = new Set(["small", "smaller", "smallest", "big", "bigger", "biggest", "little", "tall", "taller",
+  "short", "shorter", "long", "longer", "old", "older", "new", "newer", "young", "younger", "happy", "happier",
+  "sad", "sadder", "fast", "faster", "fastest", "slow", "slower", "hot", "hotter", "cold", "colder", "warm",
+  "strong", "stronger", "weak", "easy", "easier", "difficult", "hard", "harder", "funny", "funnier", "boring",
+  "brave", "tired", "hungry", "thirsty", "angry", "cheap", "cheaper", "expensive", "dangerous", "beautiful",
+  "pretty", "clean", "dirty", "loud", "quiet", "heavy", "always", "never", "sometimes", "usually", "often",
+  "suddenly", "early", "earlier", "late", "later", "quickly", "slowly", "very", "really"]);
+export const enModifier = (word) => EN_MODIFIERS.has(String(word || "").toLowerCase().replace(/[^a-z]/g, ""));
+// החפץ שבמשפט: "Tom has a small dog" צריך לצייר כלב, לא את העכבר של small
+export const enThing = (word) => (enModifier(word) ? null : enEmoji(word));
+
 // זמן במשפט באנגלית: עבר / הווה קבוע / עתיד
 export function enTime(sentence) {
   const s = String(sentence || "").toLowerCase();

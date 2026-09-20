@@ -35,6 +35,8 @@ export const TOPICS = {
   en: [
     T("abc", "אותיות וצלילים ABC", "🔤", [0, 1], { ai: "letters of the alphabet, first sounds, very simple words" }),
     T("vocab", "אוצר מילים", "🧠", [0, 8], { ai: "vocabulary: word meanings, opposites, matching a word to an emoji picture" }),
+    // חזרה על מילים שכבר תורגלו — נבנית מהמילים של הלומד עצמו, ולכן פתוחה בכל הכיתות
+    T("learned", "תרגול מילים שנלמדו", "🔖", [0, 8]),
     T("colors", "צבעים ומספרים", "🌈", [0, 2], { ai: "colors and numbers one to twenty" }),
     T("be", "am / is / are", "🗝️", [1, 3], { ai: "the verb to be: am, is, are" }),
     T("prep", "מילות מקום", "📦", [1, 3], { ai: "prepositions of place: in, on, under, next to, behind" }),

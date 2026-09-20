@@ -509,12 +509,20 @@ function mathToHebrew(s) {
     .replace(/¾/g, " שלושה רבעים ");
 }
 
+// מילים שהקול הוגה לא נכון: "קרא וענה" נשמע כמו עבר (קָרָא). בהקראה בלבד עוברים לצורה חד-משמעית,
+// והמילה חייבת לעמוד בפני עצמה — כדי לא לגעת ב"הבנת הנקרא" או ב"איך נקרא".
+const SAY_FIX = [
+  [/([^א-ת]|^)קראו(?![א-ת])/g, "$1תקראו"],
+  [/([^א-ת]|^)קרא(?![א-ת])/g, "$1תקרא"],
+];
+
 // קריינות בעברית — ענן אם מוגדר, אחרת קול הדפדפן
 function speakHe(text, opts = {}) {
   if (MUTED || !SPEECH_ON) return;
   let t = String(text);
   t = t.replace(/[\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7]/g, ""); // קול הענן משבש טקסט מנוקד
   t = cleanForSpeech(numbersToHebrew(mathToHebrew(t)));
+  for (const [re, to] of SAY_FIX) t = t.replace(re, to);
   if (!/[0-9A-Za-z\u0590-\u05FF]/.test(t)) return; // רק סימנים ואימוג'ים — אין מה להקריא
   if (cloudSpeak(t, "he", opts)) return;
   if (!opts.queue) stopAllSpeech();
@@ -781,11 +789,10 @@ const WORDS = {
 
 registerWords(WORDS);
 
-function genVocabQ(level) {
-  const list = WORDS[level] || WORDS[3];
-  const [en, he, emoji] = list[rnd(0, list.length - 1)];
+// שאלת אוצר מילים על מילה מסוימת: פירוש, תרגום או התאמה לתמונה
+function vocabQFor(entry, list, kind = rnd(0, 2)) {
+  const [en, he, emoji] = entry;
   const others = shuffle(list.filter((w) => w[0] !== en)).slice(0, 3);
-  const kind = rnd(0, 2);
   if (kind === 0) {
     const opts = shuffle([he, ...others.map((w) => w[1])]);
     return { w: en, q: `מה הפירוש של המילה ${en}?`, en, pic: emoji, options: opts, c: opts.indexOf(he), ex: `${en} = ${he} ${emoji}` };
@@ -796,6 +803,35 @@ function genVocabQ(level) {
   }
   const opts = shuffle([en, ...others.map((w) => w[0])]);
   return { w: en, q: "איזו מילה מתאימה לתמונה?", en: "", pic: emoji, options: opts, c: opts.indexOf(en), ex: `${en} = ${he} ${emoji}` };
+}
+
+function genVocabQ(level) {
+  const list = WORDS[level] || WORDS[3];
+  return vocabQFor(list[rnd(0, list.length - 1)], list);
+}
+
+// תרגול מילים שנלמדו: כל פעם 10 מילים שהלומד כבר פגש, ומילה שטעה בה חוזרת הרבה יותר מאחרות
+function learnedWordsLesson(profile, count = 10) {
+  const stats = (profile && profile.words) || {};
+  const lvl = (profile && profile.levels && profile.levels.en) || 3;
+  const all = Object.entries(WORDS).flatMap(([lv, list]) => list.map((w) => ({ w, lv: +lv })));
+  const met = all.filter((x) => stats[x.w[0]]);
+  // בהתחלה עוד אין מספיק מילים מוכרות — משלימים ממילים של הרמה הנוכחית
+  const fill = shuffle(all.filter((x) => x.lv <= lvl && !stats[x.w[0]])).slice(0, count * 2);
+  const pool = met.length >= count ? met : [...met, ...fill];
+  const bag = pool.map((x) => {
+    const s = stats[x.w[0]] || { right: 0, wrong: 0 };
+    return { x, wgt: Math.max(0.5, 1 + 4 * (s.wrong || 0) - Math.min(2, s.right || 0)) };
+  });
+  const qs = [];
+  while (qs.length < Math.min(count, pool.length) && bag.length) {
+    let r = Math.random() * bag.reduce((sum, b) => sum + b.wgt, 0);
+    let i = 0;
+    while (i < bag.length - 1 && r > bag[i].wgt) { r -= bag[i].wgt; i++; }
+    const { x } = bag.splice(i, 1)[0];
+    qs.push(vocabQFor(x.w, WORDS[x.lv] || WORDS[3], qs.length % 3));
+  }
+  return qs;
 }
 
 function vocabLesson(level, seen = []) {
@@ -1480,15 +1516,15 @@ function AnimText({ text, reveal, canSpeak }) {
           const m = p.match(/^(.*?)_{2,}(.*)$/);
           return (
             <React.Fragment key={i}>
-              {m[1] ? <Word text={m[1]} delay={w++ * 70} canSpeak={canSpeak} /> : null}
+              {m[1] ? <Word text={m[1]} delay={Math.min(w++ * 70, 700)} canSpeak={canSpeak} /> : null}
               <span className={"blank" + (reveal ? " filled" : "")} aria-label="מילה חסרה">
                 {reveal || ""}
               </span>
-              {m[2] ? <Word text={m[2]} delay={w++ * 70} canSpeak={canSpeak} /> : null}
+              {m[2] ? <Word text={m[2]} delay={Math.min(w++ * 70, 700)} canSpeak={canSpeak} /> : null}
             </React.Fragment>
           );
         }
-        return <Word key={i} text={p} delay={w++ * 70} canSpeak={canSpeak} />;
+        return <Word key={i} text={p} delay={Math.min(w++ * 70, 700)} canSpeak={canSpeak} />;
       })}
     </>
   );
@@ -1684,6 +1720,7 @@ export default function App() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [sceneOv, setSceneOv] = useState(null); // אינדקס הצעד שהאנימציה שלו פתוחה על כל המסך
   const [showText, setShowText] = useState(false);
+  const textPref = useRef(false); // מי שביקש הסבר בכתב — מקבל אותו גם בכרטיסים הבאים
   const [showAllTopics, setShowAllTopics] = useState(false);
 
   // השתקה + הקראה + אזור הורים
@@ -1933,6 +1970,12 @@ export default function App() {
     }, 1300);
   }
 
+  // כשנפתח הסבר — תשובה שנענתה או "להציג את ההסבר בכתב" — גוללים אליו כדי שלא יישאר מתחת לקצה המסך
+  useEffect(() => {
+    const el = document.querySelector(".explain") || (showText ? document.querySelector(".lomibubble") : null);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [lesson && lesson.phase, course && course.phase, showText]);
+
   // סגירת האבחון רצה מחוץ לעדכון ה-state (פעם אחת, אחרי הרינדור)
   useEffect(() => {
     if (screen === "diag" && diag && diag.done) {
@@ -1944,7 +1987,7 @@ export default function App() {
   useEffect(() => {
     if (screen !== "course" || !course) return;
     const step = course.lsn.steps[course.i];
-    setShowText(false);
+    setShowText(textPref.current);
     if (step.t === "teach") {
       speakHe(step.title + ". " + step.body);
       if (step.en) speakAny(step.en, { queue: true });
@@ -1979,11 +2022,20 @@ export default function App() {
     markActiveStart();
     setSubject(subj);
     setTopic(topicObj);
+    // תרגול מילים שנלמדו — נבנה מהמילים של הלומד עצמו, ולא מהמאגר או מהמחוללים
+    if (subj === "en" && topicObj.id === "learned") {
+      const qs = learnedWordsLesson(profile, 10);
+      if (qs.length) {
+        setLesson({ qs, i: 0, phase: "idle", selected: null, fb: "", correct: 0 });
+        setScreen("lesson");
+        return;
+      }
+    }
     {
       const seenS = (profile.seen && profile.seen[subj]) || [];
       const lvlS = profile.levels[subj];
       const qsNew = topicObj.id === "mix"
-        ? mixPractice(subj, TOPICS[subj].filter((t) => inGrade(t, profile.grade)), lvlS, seenS)
+        ? mixPractice(subj, TOPICS[subj].filter((t) => inGrade(t, profile.grade) && t.id !== "learned"), lvlS, seenS)
         : practiceFor(subj, topicObj.id, lvlS, seenS);
       if (qsNew && qsNew.length >= 5) {
         recordSeen(subj, qsNew);
@@ -2052,6 +2104,7 @@ export default function App() {
     const q = lesson.qs[lesson.i];
     const ok = i === q.c;
     if (ok) sfx.correct(); else sfx.wrong();
+    recordWord(q, ok);
     const saidEn = hasEnglish(q.options[q.c]);
     if (saidEn) speak(q.options[q.c]);
     if (q.ex) speakHe(q.ex, { queue: saidEn }); // מקריאים את ההסבר
@@ -2219,6 +2272,7 @@ export default function App() {
     const step = course.lsn.steps[course.i];
     const ok = i === step.c;
     if (ok) sfx.correct(); else sfx.wrong();
+    recordWord(step, ok);
     const saidEn = hasEnglish(step.options[step.c]);
     if (saidEn) speak(step.options[step.c]);
     if (step.ex) speakHe(step.ex, { queue: saidEn });
@@ -2419,6 +2473,24 @@ export default function App() {
   }
 
   // רישום שאלות שהוצגו — כדי שתרגול נוסף לא יחזור על אותן שאלות
+  // מעקב אחרי מילים באנגלית — מילה שטעו בה תחזור יותר ב"תרגול מילים שנלמדו"
+  function recordWord(q, ok) {
+    const w = q && q.w;
+    if (!w || typeof w !== "string") return;
+    setProfile((prev) => {
+      const cur = (prev.words && prev.words[w]) || { right: 0, wrong: 0 };
+      const p = {
+        ...prev,
+        words: {
+          ...(prev.words || {}),
+          [w]: { right: cur.right + (ok ? 1 : 0), wrong: cur.wrong + (ok ? 0 : 1), last: Date.now() },
+        },
+      };
+      saveUser(p);
+      return p;
+    });
+  }
+
   function recordSeen(subj, qs) {
     const keys = qs.map(qKey);
     setProfile((prev) => {
@@ -3185,7 +3257,7 @@ export default function App() {
                 {!step.scene || showText ? (
                   <AnimText text={step.body} canSpeak />
                 ) : (
-                  <button className="showtext" onClick={() => { sfx.click(); setShowText(true); }}>
+                  <button className="showtext" onClick={() => { sfx.click(); textPref.current = true; setShowText(true); }}>
                     📝 להציג את ההסבר בכתב
                   </button>
                 )}
@@ -3299,8 +3371,8 @@ export default function App() {
           <Icon name={speechOn ? "speech" : "nospeech"} />
         </button>
         <Confetti burst={burst} />
-        <StepPath total={5} done={lesson.i} current={lesson.i} />
-        <Bubble>{ENCOURAGE[lesson.i]}</Bubble>
+        <StepPath total={lesson.qs.length} done={lesson.i} current={lesson.i} />
+        <Bubble>{lesson.qs.length === 5 ? ENCOURAGE[lesson.i] : courseCheer(lesson.i, lesson.qs.length, profile.name)}</Bubble>
         <QuestionCard key={"l" + lesson.i} q={q} onAnswer={lessonAnswer} phase={lesson.phase} selected={lesson.selected} />
         {lesson.phase !== "idle" && (
           <>
