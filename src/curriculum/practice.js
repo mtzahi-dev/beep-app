@@ -2,6 +2,7 @@
 
 import { genMathTopic } from "./mathGen.js";
 import { genEnTopic } from "./enGen.js";
+import { genAbcTopic } from "./abcGen.js";
 import { TOPIC_BANKS, genBankTopic, shuffleQ } from "./banks.js";
 
 const shuffle = (a) => [...a].sort(() => Math.random() - 0.5);
@@ -10,6 +11,7 @@ const qKey = (q) => (q.w || "") + "|" + (q.en || "") + "|" + (q.q || "");
 const GENERATORS = {
   math: genMathTopic,
   en: genEnTopic,
+  abc: genAbcTopic,
   heb: genBankTopic("heb"),
   sci: genBankTopic("sci"),
 };

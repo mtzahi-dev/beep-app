@@ -5,8 +5,9 @@ import { MATH_LESSONS } from "./lessonsMath.js";
 import { EN_LESSONS } from "./lessonsEn.js";
 import { HEB_LESSONS } from "./lessonsHeb.js";
 import { SCI_LESSONS } from "./lessonsSci.js";
+import { ABC_LESSONS } from "./lessonsAbc.js";
 
-export const NEW_LESSONS = { math: MATH_LESSONS, en: EN_LESSONS, heb: HEB_LESSONS, sci: SCI_LESSONS };
+export const NEW_LESSONS = { math: MATH_LESSONS, en: EN_LESSONS, heb: HEB_LESSONS, sci: SCI_LESSONS, abc: ABC_LESSONS };
 
 // שיעורים ותיקים שעוברים לנושא החדש שמתאים להם
 export const LESSON_MOVES = {

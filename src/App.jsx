@@ -43,6 +43,8 @@ const INTERESTS = [
 ];
 
 const SUBJECTS = {
+  // grades = טווח הכיתות שרואות את הקטגוריה בדף הבית (בלי grades — כולם רואים)
+  abc: { label: "אותיות ומילים", emoji: "🔡", grades: [0, 0] },
   en: { label: "אנגלית", emoji: "🔤" },
   math: { label: "חשבון", emoji: "🔢" },
   heb: { label: "הבנת הנקרא", emoji: "📚" },
@@ -2247,7 +2249,8 @@ export default function App() {
 
   // כניסה לנושא: קודם אבחון קצר (בפעם הראשונה במקצוע), אחר כך שיעורים/תרגול
   function openTopic(t, subj = subject) {
-    if (!(profile.diagDone || {})[subj]) {
+    // ל"אותיות ומילים" אין אבחון — מתחילים ישר מהשיעור
+    if (!(profile.diagDone || {})[subj] && subj !== "abc") {
       sfx.click();
       setSubject(subj);
       setPendingTopic(t);
@@ -3042,7 +3045,9 @@ export default function App() {
         )}
         <p className="sub">או בוחרים מקצוע:</p>
         <div className="subjects">
-          {Object.entries(SUBJECTS).map(([id, s]) => (
+          {Object.entries(SUBJECTS)
+            .filter(([, s]) => !s.grades || (profile.grade >= s.grades[0] && profile.grade <= s.grades[1]))
+            .map(([id, s]) => (
             <button key={id} className={"subjbtn s-" + id} onClick={() => { sfx.click(); setSubject(id); setScreen("topics"); }}>
               <span className="semoji">{s.emoji}</span>
               {s.label}

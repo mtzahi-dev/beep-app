@@ -32,6 +32,14 @@ export const TOPICS = {
     T("linear", "פונקציה קווית", "📈", [7, 8]),
     T("mix", "הפתעה!", "🎲", [0, 8]),
   ],
+  // כיתה א': אותיות ומילים. מופיע בדף הבית רק ללומדים בכיתה א' (ראה SUBJECTS ב-App.jsx)
+  abc: [
+    T("letters", "האותיות שלנו", "🔡", [0, 1]),
+    T("sounds", "האות שפותחת מילה", "🔠", [0, 1]),
+    T("syll", "הברות ומחיאות כף", "🧩", [0, 1]),
+    T("words", "מילים ראשונות", "📕", [0, 1]),
+    T("mix", "הפתעה!", "🎲", [0, 1]),
+  ],
   en: [
     T("abc", "אותיות וצלילים ABC", "🔤", [0, 1], { ai: "letters of the alphabet, first sounds, very simple words" }),
     T("vocab", "אוצר מילים", "🧠", [0, 8], { ai: "vocabulary: word meanings, opposites, matching a word to an emoji picture" }),
