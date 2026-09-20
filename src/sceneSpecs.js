@@ -209,7 +209,7 @@ function storyScene(q) {
   }).filter((p) => p.length);
   if (panels.flat().length < 2) return null;
   const ans = emojisIn((q.options || [])[q.c])[0] || null;
-  return { type: "story", panels, ans };
+  return { type: "story", panels, ans, rtl: heb };
 }
 
 // ---- הפכים ----

@@ -4,7 +4,8 @@
 import { lesson, teach, ask, f, seq, still } from "./lessonKit.js";
 
 const pic = (items, answer) => ({ type: "fact", items, answer, ansE: items[items.length - 1] });
-const tiles = (tokens, answer) => ({ type: "fact", tokens, answer });
+// items = התמונה שמלווה את האריחים (יש מילה? שיראו אותה)
+const tiles = (tokens, answer, items) => ({ type: "fact", tokens, answer, ...(items ? { items } : {}) });
 
 export const ABC_LESSONS = {
   letters: [lesson("abc-letters", "מכירים את האותיות", "🔡", [

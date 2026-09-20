@@ -5,21 +5,25 @@ import { useBeats, Spr, Badge, range } from "./sceneKit.jsx";
 import { PieSvg } from "./scenesMath2.jsx";
 
 const spread = (i, n) => (n === 1 ? 50 : 12 + (i * 76) / (n - 1));
+// בעברית קוראים מימין לשמאל — סצנה עם טקסט עברי נפרשת הפוך
+const isHeb = (...parts) => parts.some((p) => /[א-ת]/.test(String(p == null ? "" : p)));
+const mirror = (rtl, x) => (rtl ? 100 - x : x);
 
 export function Seq({ sc, playing, playKey }) {
   const frames = sc.frames || [];
   const n = frames.length;
   const beat = useBeats(n, 950, playing, playKey, 200);
   const w = Math.min(84 / n, 34);
+  const rtl = isHeb(...frames.map((f) => f.cap));
   return (
     <>
       {frames.map((f, i) => {
-        const x = spread(i, n);
+        const x = mirror(rtl, spread(i, n));
         const on = !playing || i < beat;
         return (
           <React.Fragment key={i}>
             {sc.arrows !== false && i > 0 && (
-              <Spr e="➜" x={x - 38 / Math.max(1, n - 1)} y={40} w={6} h={12} cls={"arrow " + (on ? "pop" : "gone")} />
+              <Spr e={rtl ? "⬅" : "➜"} x={x + (rtl ? 38 : -38) / Math.max(1, n - 1)} y={40} w={6} h={12} cls={"arrow " + (on ? "pop" : "gone")} />
             )}
             <Spr e={f.e} x={x} y={40} w={w * 0.86} h={f.cap ? 54 : 66} cls={on ? "pop " + (f.anim || "") : "gone"} />
             {f.cap && <Badge x={x} y={86} text={f.cap} show={on} />}
@@ -153,10 +157,11 @@ export function Choices({ sc, playing, playKey }) {
   const beat = useBeats(1, 500, playing, playKey, 150);
   const n = sc.items.length;
   const w = Math.min(84 / n, 28);
+  const rtl = isHeb(...sc.items.map((it) => it.cap));
   return (
     <>
       {sc.items.map((it, i) => {
-        const x = spread(i, n);
+        const x = mirror(rtl, spread(i, n));
         const cls = beat >= 1 ? (i === sc.answer ? "win" : "dim") : "pop";
         return (
           <React.Fragment key={i}>
@@ -175,7 +180,7 @@ export function Story({ sc, playing, playKey }) {
   const beat = useBeats(panels.length + 1, 900, playing, playKey, 150);
   const n = panels.length;
   return (
-    <div className="sstory" style={{ gridTemplateColumns: `repeat(${n}, 1fr)`, "--n": n }}>
+    <div className="sstory" style={{ gridTemplateColumns: `repeat(${n}, 1fr)`, "--n": n, direction: sc.rtl ? "rtl" : "ltr" }}>
       {panels.map((p, i) => {
         const hasAns = sc.ans && p.includes(sc.ans);
         const on = !playing || i < beat;
@@ -199,15 +204,16 @@ export function Fact({ sc, playing, playKey }) {
   const askMark = sc.ansE === "❓" || /\?/.test(String(sc.answer || ""));
   const waitE = askMark ? "🤔" : "❓";
   const waitT = askMark ? "…" : "?";
+  const rtl = isHeb(sc.answer, ...(sc.tokens || []));
   if (sc.tokens) {
-    // "dog = ?" — התמונה של המילה מופיעה רק בפתרון
-    const pic = solved && sc.ansE;
+    // תמונת השאלה (items) למעלה; באנגלית אין תמונה עד הפתרון, ואז מגיעה תמונת התשובה
+    const top = (sc.items && sc.items[0]) || (solved ? sc.ansE : null);
     return (
       <>
-        {pic && <Spr e={sc.ansE} x={50} y={30} w={20} h={42} cls="win" />}
+        {top && <Spr e={top} x={50} y={30} w={20} h={42} cls={solved ? "win" : "pop float"} />}
         {sc.tokens.map((t, i) => {
           const blank = /_{2,}/.test(t);
-          return <Badge key={i} x={spread(i, sc.tokens.length)} y={pic ? 76 : 45} tone={"tile" + (blank && solved ? " good" : "")} text={blank ? (solved ? sc.answer : waitT) : t} />;
+          return <Badge key={i} x={mirror(rtl, spread(i, sc.tokens.length))} y={top ? 76 : 45} tone={"tile" + (blank && solved ? " good" : "")} text={blank ? (solved ? sc.answer : waitT) : t} />;
         })}
       </>
     );
@@ -216,11 +222,11 @@ export function Fact({ sc, playing, playKey }) {
   return (
     <>
       {sc.items.map((e, i) => (
-        <Spr key={i} e={e} x={n === 1 ? 30 : 12 + (i * 44) / Math.max(1, n - 1)} y={40} w={Math.min(50 / n, 26)} h={58}
+        <Spr key={i} e={e} x={mirror(rtl, n === 1 ? 30 : 12 + (i * 44) / Math.max(1, n - 1))} y={40} w={Math.min(50 / n, 26)} h={58}
           cls="pop float" style={{ animationDelay: i * 120 + "ms" }} />
       ))}
-      <Spr e={solved ? sc.ansE || "💡" : waitE} x={80} y={38} w={26} h={56} cls={solved ? "win" : "bob"} key={solved ? "a" : "q"} />
-      <Badge x={80} y={88} text={solved ? sc.answer : waitT} tone={solved ? "good" : ""} />
+      <Spr e={solved ? sc.ansE || "💡" : waitE} x={mirror(rtl, 80)} y={38} w={26} h={56} cls={solved ? "win" : "bob"} key={solved ? "a" : "q"} />
+      <Badge x={mirror(rtl, 80)} y={88} text={solved ? sc.answer : waitT} tone={solved ? "good" : ""} />
     </>
   );
 }

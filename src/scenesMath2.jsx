@@ -116,9 +116,16 @@ export function Ten({ sc, playing, playKey }) {
   const cell = (frame, i) => ({ x: (frame ? 58 : 8) + (i % 5) * 7.6 + 3.8, y: 36 + Math.floor(i / 5) * 24 });
   const dots = [];
   range(a).forEach((i) => dots.push({ key: "a" + i, frame: 0, i, cls: "da" }));
+  // לפני שמתחילים שתי הקבוצות על המסך (6 במסגרת אחת, 8 בשנייה) — ואז הן זזות אחת-אחת
   range(b).forEach((j) => {
+    const moved = j < beat;
     const inFirst = j < fill;
-    dots.push({ key: "b" + j, frame: inFirst ? 0 : 1, i: inFirst ? a + j : j - fill, cls: "db" + (j < beat ? " on" : "") });
+    dots.push({
+      key: "b" + j,
+      frame: moved ? (inFirst ? 0 : 1) : 1,
+      i: moved ? (inFirst ? a + j : j - fill) : j,
+      cls: "db on",
+    });
   });
   return (
     <>
@@ -129,7 +136,7 @@ export function Ten({ sc, playing, playKey }) {
         return <span key={d.key} className={"sten " + d.cls} style={{ left: p.x + "%", top: p.y + "%" }} />;
       })}
       <Badge x={27} y={8} text={Math.min(10, a + Math.min(beat, fill))} show />
-      <Badge x={77} y={8} text={Math.max(0, beat - fill)} show={beat > fill} />
+      <Badge x={77} y={8} text={b - Math.min(beat, fill)} show />
       <Badge x={50} y={93} text={`${a} + ${b} = 10 + ${b - fill} = ${a + b}`} tone="big" show={beat > b} />
     </>
   );

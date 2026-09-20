@@ -434,10 +434,13 @@ export function Graph({ sc, playing, playKey }) {
         {gl.map((v) => <line key={"gy" + v} x1={X(-S)} y1={Yv(v)} x2={X(S)} y2={Yv(v)} className="sgrid" />)}
         <line x1={X(-S)} y1={Yv(0)} x2={X(S)} y2={Yv(0)} className="saxis" />
         <line x1={X(0)} y1={Yv(-S)} x2={X(0)} y2={Yv(S)} className="saxis" />
+        {/* ה-x שעליו שואלים מסומן כבר בשאלה, כדי שהציור יתחבר לתרגיל */}
+        {x != null && <line x1={X(x)} y1={Yv(-S)} x2={X(x)} y2={Yv(S)} className="sgrid ask" />}
         {d && <path d={d} className={"sgline" + (playing ? " draw" : "")} />}
         {(pts || []).map(([px, py], i) => <circle key={i} cx={X(px)} cy={Yv(py)} r="1.3" className="spt" />)}
         {yx != null && playing && beat >= 1 && Math.abs(yx) <= S && <circle cx={X(x)} cy={Yv(yx)} r="1.9" className="spt good" />}
       </svg>
+      {x != null && <Badge x={Math.min(92, Math.max(8, X(x)))} y={Math.min(93, pctY(Yv(0)) + 9)} text={`x = ${x}`} />}
       {yx != null && playing && beat >= 1 && Math.abs(yx) <= S && (
         <Badge x={Math.min(90, X(x) + 9)} y={pctY(Yv(yx)) - 9} tone="good" text={`(${x}, ${minus(yx)})`} />
       )}

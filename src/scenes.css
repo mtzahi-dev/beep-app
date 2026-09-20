@@ -89,7 +89,8 @@
 .stenframe { position:absolute; top:48%; width:39%; height:50%; transform:translate(-50%,-50%); border:.7cqh solid #20305A; border-radius:1.2cqh;
   background:linear-gradient(90deg, transparent 19.4%, #20305A 19.4% 20.6%, transparent 20.6% 39.4%, #20305A 39.4% 40.6%, transparent 40.6% 59.4%, #20305A 59.4% 60.6%, transparent 60.6% 79.4%, #20305A 79.4% 80.6%, transparent 80.6%),
     linear-gradient(transparent 49%, #20305A 49% 51%, transparent 51%); }
-.sten { position:absolute; width:17cqh; height:17cqh; border-radius:50%; transform:translate(-50%,-50%) scale(0); transition:transform .35s cubic-bezier(.3,1.5,.5,1); }
+.sten { position:absolute; width:17cqh; height:17cqh; border-radius:50%; transform:translate(-50%,-50%) scale(0);
+  transition:transform .35s cubic-bezier(.3,1.5,.5,1), left .4s ease, top .4s ease; }
 .sten.da { background:#FF7B6E; transform:translate(-50%,-50%) scale(1); }
 .sten.db { background:#6D5AE6; }
 .sten.db.on { transform:translate(-50%,-50%) scale(1); }
@@ -214,6 +215,7 @@
 .sunit.ub { background:linear-gradient(135deg,#3DD9A4,#0FA97A); }
 .sldiv { position:absolute; top:38%; height:26%; border-top:.8cqh solid #1E2A4A; border-left:.8cqh solid #1E2A4A; border-radius:1cqh 0 0 0; }
 .sgrid { stroke:#E2E8F0; stroke-width:.25; }
+.sgrid.ask { stroke:#F97A1F; stroke-width:.6; stroke-dasharray:2 1.6; }
 .saxis { stroke:#475569; stroke-width:.5; }
 .sgline { stroke:#6C5CE7; stroke-width:.9; fill:none; stroke-linecap:round; }
 .sgline.draw { stroke-dasharray:200; stroke-dashoffset:200; animation:scDraw 1.4s ease forwards; }
