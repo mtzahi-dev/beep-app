@@ -45,7 +45,7 @@ const INTERESTS = [
 
 const SUBJECTS = {
   // grades = טווח הכיתות שרואות את הקטגוריה בדף הבית (בלי grades — כולם רואים)
-  abc: { label: "אותיות ומילים", emoji: "🔡", grades: [0, 0] },
+  abc: { label: "אותיות ומילים", emoji: "א", grades: [0, 0] },
   en: { label: "אנגלית", emoji: "🔤" },
   math: { label: "חשבון", emoji: "🔢" },
   heb: { label: "הבנת הנקרא", emoji: "📚" },
@@ -521,6 +521,33 @@ const SAY_FIX = [
   [/([^א-ת]|^)משווים את(?![א-ת])/g, "$1עושים השוואה בין"],
   [/([^א-ת]|^)(כש)?משווים(?![א-ת])/g, "$1$2עושים השוואה"],
 ];
+
+// משפט התשובה שמופיע אחרי כל שאלה. ansLabel מאפשר ניסוח מדויק ("האות החסרה היא כ")
+function answerLine(q) {
+  const a = q && q.options ? q.options[q.c] : "";
+  return `${(q && q.ansLabel) || "התשובה הנכונה היא"} ${a}`;
+}
+
+// ההסבר נאמר ונכתב רק כשהוא מוסיף על משפט התשובה
+function exOf(q) {
+  const norm = (s) => String(s || "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return q && q.ex && norm(q.ex) !== norm(answerLine(q)) ? q.ex : "";
+}
+
+// אומרים את התשובה הנכונה בקול, ואחריה ההסבר
+function sayAnswer(q, ok) {
+  if (!q || !q.options) return;
+  const a = String(q.options[q.c]);
+  const label = q.ansLabel || "התשובה הנכונה היא";
+  const opening = ok ? "נכון! " : "";
+  if (hasEnglish(a)) {
+    speakHe(opening + label);
+    speak(a, { queue: true });
+  } else {
+    speakHe(opening + label + " " + a);
+  }
+  if (exOf(q)) speakHe(exOf(q), { queue: true });
+}
 
 // קריינות בעברית — ענן אם מוגדר, אחרת קול הדפדפן
 function speakHe(text, opts = {}) {
@@ -1952,7 +1979,7 @@ export default function App() {
     const ok = i === diag.q.c;
     if (ok) sfx.correct(); else sfx.wrong();
     if (ok) setBurst((b) => b + 1);
-    if (hasEnglish(diag.q.options[diag.q.c])) speak(diag.q.options[diag.q.c]);
+    sayAnswer(diag.q, ok);
     setDiag((d) => ({
       ...d,
       phase: ok ? "right" : "wrong",
@@ -2126,9 +2153,7 @@ export default function App() {
     const ok = i === q.c;
     if (ok) sfx.correct(); else sfx.wrong();
     recordWord(q, ok);
-    const saidEn = hasEnglish(q.options[q.c]);
-    if (saidEn) speak(q.options[q.c]);
-    if (q.ex) speakHe(q.ex, { queue: saidEn }); // מקריאים את ההסבר
+    sayAnswer(q, ok);
     const state = {
       phase: ok ? "right" : "wrong",
       selected: i,
@@ -2297,9 +2322,7 @@ export default function App() {
     const ok = i === step.c;
     if (ok) sfx.correct(); else sfx.wrong();
     recordWord(step, ok);
-    const saidEn = hasEnglish(step.options[step.c]);
-    if (saidEn) speak(step.options[step.c]);
-    if (step.ex) speakHe(step.ex, { queue: saidEn });
+    sayAnswer(step, ok);
     if (ok) setBurst((b) => b + 1);
     const state = {
       phase: ok ? "right" : "wrong",
@@ -3348,8 +3371,8 @@ export default function App() {
                   <div className="combo">🔥 {course.combo} נכונות ברצף!</div>
                 )}
                 <div className={"explain" + (course.phase === "right" ? " good" : "")}>
-                  <span className="bulb">💡</span> {step.ex}
-                  {course.phase === "wrong" ? " — התשובה הנכונה מסומנת בירוק." : ""}
+                  <span className="bulb">💡</span> <b>{answerLine(step)}</b>
+                  {exOf(step) ? " — " + exOf(step) : ""}
                 </div>
                 <button
                   className={"btn" + (course.phase === "right" ? " green" : "")}
@@ -3443,8 +3466,8 @@ export default function App() {
               <div className="combo">🔥 {lesson.combo} נכונות ברצף!</div>
             )}
             <div className={"explain" + (lesson.phase === "right" ? " good" : "")}>
-              <span className="bulb">💡</span> {q.ex}
-              {lesson.phase === "wrong" ? " — התשובה הנכונה מסומנת בירוק." : ""}
+              <span className="bulb">💡</span> <b>{answerLine(q)}</b>
+              {exOf(q) ? " — " + exOf(q) : ""}
             </div>
             <button
               className={"btn" + (lesson.phase === "right" ? " green" : "")}

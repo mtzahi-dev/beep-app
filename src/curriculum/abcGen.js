@@ -43,7 +43,7 @@ G.letters = (lv) => {
     const wrongs = shuffle(pool.filter((l) => l[0] !== ch)).slice(0, 3).map((l) => l[1]);
     const options = shuffle([name, ...wrongs]);
     return {
-      q: "איזו אות זאת?", options, c: options.indexOf(name), ex: `זאת האות ${name}`,
+      q: "איזו אות זאת?", options, c: options.indexOf(name), ex: `${name} נכתבת ככה: ${ch}`, ansLabel: "זאת האות",
       scene: { type: "fact", tokens: [ch, "___"], answer: name },
     };
   }
@@ -52,7 +52,7 @@ G.letters = (lv) => {
     const options = letterOpts(ch);
     return {
       q: `איזו אות היא ${name}?`, options, c: options.indexOf(ch), ex: `${name} נכתבת ככה: ${ch}`,
-      scene: { type: "fact", items: ["🔡"], answer: ch },
+      scene: { type: "fact", items: ["✏️"], answer: ch },
     };
   }
   const i = rnd(0, (lv <= 2 ? 9 : LETTERS.length - 2));
@@ -60,7 +60,8 @@ G.letters = (lv) => {
   const b = LETTERS[i + 1][0];
   const options = letterOpts(b);
   return {
-    q: `איזו אות באה אחרי ${a}?`, options, c: options.indexOf(b), ex: `אחרי ${a} באה ${b}`,
+    q: `איזו אות באה אחרי ${a}?`, options, c: options.indexOf(b), ansLabel: `אחרי ${a} באה`,
+    ex: LETTERS[i + 2] ? `הסדר: ${a}, ${b}, ${LETTERS[i + 2][0]}` : `הסדר: ${a}, ${b}`,
     scene: { type: "fact", tokens: [a, "___"], answer: b },
   };
 };
@@ -73,7 +74,8 @@ G.sounds = (lv) => {
   if (rnd(0, 1) === 0) {
     const options = letterOpts(first);
     return {
-      q: `באיזו אות מתחילה המילה ${w}?`, options, c: options.indexOf(first), ex: `${w} מתחילה באות ${first}`,
+      q: `באיזו אות מתחילה המילה ${w}?`, options, c: options.indexOf(first), ex: `${w} ${e}`,
+      ansLabel: "המילה מתחילה באות",
       pic: e, scene: { type: "seq", frames: [{ e, anim: "float" }] },
     };
   }
@@ -96,7 +98,7 @@ G.syll = (lv) => {
   }
   const options = shuffle(nums).map(String);
   return {
-    q: `כמה הברות יש במילה ${w}?`, options, c: options.indexOf(String(n)),
+    q: `כמה הברות יש במילה ${w}?`, options, c: options.indexOf(String(n)), ansLabel: "מספר ההברות הוא",
     ex: `${w} — ${n} הברות. מוחאים כף לכל הברה 👏`,
     pic: e, scene: { type: "seq", frames: [{ e, anim: "float" }] },
   };
@@ -115,7 +117,7 @@ G.words = (lv) => {
   const masked = w.slice(0, i) + "_" + w.slice(i + 1);
   const options = letterOpts(w[i]);
   return {
-    q: `איזו אות חסרה במילה ${masked}?`, say: `איזו אות חסרה במילה ${w}?`,
+    q: `איזו אות חסרה במילה ${masked}?`, say: `איזו אות חסרה במילה ${w}?`, ansLabel: "האות החסרה היא",
     options, c: options.indexOf(w[i]), ex: `${w} ${e}`,
     pic: e, scene: { type: "fact", items: [e], tokens: [masked, "___"], answer: w },
   };
