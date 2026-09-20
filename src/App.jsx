@@ -10,6 +10,7 @@ import { addToBank } from "./curriculum/banks.js";
 import { mergeLessons } from "./curriculum/lessons.js";
 import { PHOTOS, PHOTO_CREDITS } from "./curriculum/photos.js";
 import { genMathTopic } from "./curriculum/mathGen.js";
+import { createFamily, syncFamily, joinFamily } from "./familySync.js";
 
 /* ─────────────────────────  בִּיפּ · לומדים בצעדים קטנים  ─────────────────────────
    אב-טיפוס: אפליקציית לימוד לילדים עם קשיי קשב וריכוז (כיתות א'-ט')
@@ -656,6 +657,7 @@ const sfx = {
 const USERS_KEY = "lomi:users";
 const CURRENT_KEY = "lomi:current";
 const OLD_KEY = "lomi:profile";
+const FAMILY_KEY = "lomi:family"; // קוד משפחה — מחבר את הלומדים בין מכשירים
 
 async function storGet(k) {
   try {
@@ -1813,6 +1815,10 @@ export default function App() {
   const [subject, setSubject] = useState("en");
   const [topic, setTopic] = useState(null);
   const [lessonSummary, setLessonSummary] = useState(null); // מה נלמד בשיעור האחרון — לכרטיס הסיכום
+  const [familyCode, setFamilyCode] = useState("");
+  const [familyMsg, setFamilyMsg] = useState("");
+  const [codeInput, setCodeInput] = useState("");
+  const famTimer = useRef(null);
   const [pendingTopic, setPendingTopic] = useState(null); // הנושא שנבחר לפני אבחון
 
   // אבחון
@@ -1878,7 +1884,20 @@ export default function App() {
   // טעינת משתמשים שמורים
   useEffect(() => {
     (async () => {
-      const us = await loadUsers();
+      let us = await loadUsers();
+      // יש קוד משפחה? מביאים את הלומדים משאר המכשירים לפני שמחליטים מה להציג
+      const fam = await storGet(FAMILY_KEY);
+      if (fam) {
+        setFamilyCode(fam);
+        try {
+          const res = await Promise.race([
+            syncFamily(fam, us),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), 2500)),
+          ]);
+          us = res.users;
+          await persistUsers(us);
+        } catch {}
+      }
       setUsers(us);
       const m = await storGet("lomi:muted");
       if (m === "1") {
@@ -2261,11 +2280,77 @@ export default function App() {
   // ---------- ניהול משתמשים ----------
 
   async function saveUser(p) {
-    const next = users.some((u) => u.id === p.id)
-      ? users.map((u) => (u.id === p.id ? p : u))
-      : [...users, p];
+    const stamped = { ...p, updatedAt: Date.now() }; // לפי זה בוחרים בין מכשירים מה עדכני יותר
+    const next = users.some((u) => u.id === stamped.id)
+      ? users.map((u) => (u.id === stamped.id ? stamped : u))
+      : [...users, stamped];
     setUsers(next);
     await persistUsers(next);
+    pushFamily(next);
+  }
+
+  // ---------- קוד משפחה: אותם לומדים בכל המכשירים ----------
+
+  // דחיפה לענן בהשהיה, כדי לא לשלוח על כל תשובה
+  function pushFamily(list) {
+    if (!familyCode) return;
+    clearTimeout(famTimer.current);
+    famTimer.current = setTimeout(() => {
+      syncFamily(familyCode, list)
+        .then(({ users: merged }) => { setUsers(merged); persistUsers(merged); })
+        .catch(() => {});
+    }, 4000);
+  }
+
+  async function makeFamily() {
+    sfx.click();
+    setFamilyMsg("יוצר קוד...");
+    try {
+      const { code, users: merged } = await createFamily(users);
+      setFamilyCode(code);
+      await storSet(FAMILY_KEY, code);
+      setUsers(merged);
+      await persistUsers(merged);
+      setFamilyMsg("הקוד מוכן! הקלידו אותו באזור ההורים במכשיר השני.");
+    } catch {
+      setFamilyMsg("לא הצלחתי ליצור קוד — בדקו חיבור לאינטרנט.");
+    }
+  }
+
+  async function joinFamilyCode() {
+    sfx.click();
+    setFamilyMsg("מחבר...");
+    try {
+      const { code, users: merged } = await joinFamily(codeInput, users);
+      setFamilyCode(code);
+      await storSet(FAMILY_KEY, code);
+      setUsers(merged);
+      await persistUsers(merged);
+      setCodeInput("");
+      setFamilyMsg(`מחובר! ${merged.length} לומדים במכשיר הזה.`);
+    } catch (e) {
+      setFamilyMsg(e.message === "no-code" ? "לא מצאתי קוד כזה — בדקו את האותיות." : "החיבור נכשל — בדקו אינטרנט.");
+    }
+  }
+
+  async function syncNow() {
+    sfx.click();
+    setFamilyMsg("מסנכרן...");
+    try {
+      const { users: merged } = await syncFamily(familyCode, users);
+      setUsers(merged);
+      await persistUsers(merged);
+      setFamilyMsg(`מעודכן — ${merged.length} לומדים.`);
+    } catch {
+      setFamilyMsg("הסנכרון נכשל — בדקו אינטרנט.");
+    }
+  }
+
+  async function leaveFamily() {
+    sfx.click();
+    setFamilyCode("");
+    await storSet(FAMILY_KEY, "");
+    setFamilyMsg("המכשיר נותק. הלומדים שכאן נשארו כאן.");
   }
 
   function selectUser(u) {
@@ -2970,6 +3055,44 @@ export default function App() {
               ))}
             </div>
           </details>
+        </div>
+        <div className="psec">
+          <h3>👨‍👩‍👧 הלומדים בכל המכשירים</h3>
+          {familyCode ? (
+            <>
+              <p className="sub">
+                קוד המשפחה שלכם: <b className="famcode">{familyCode}</b>
+                <br />
+                הקלידו אותו באזור ההורים בטלפון או במחשב אחר — וכל הלומדים וההתקדמות יופיעו גם שם.
+              </p>
+              <div className="kidtabs">
+                <button className="chip" onClick={syncNow}>סנכרון עכשיו 🔄</button>
+                <button className="chip" onClick={leaveFamily}>ניתוק המכשיר</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="sub">
+                הלומדים נשמרים בכל מכשיר בנפרד. קוד משפחה מחבר ביניהם: יוצרים קוד פה, ומקלידים אותו במכשירים האחרים.
+              </p>
+              <div className="kidtabs">
+                <button className="chip" onClick={makeFamily}>צור קוד משפחה ✨</button>
+              </div>
+              <div className="famjoin">
+                <input
+                  className="input"
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, "").slice(0, 8))}
+                  placeholder="כבר יש לכם קוד? הקלידו אותו"
+                  aria-label="קוד משפחה"
+                />
+                <button className="chip" disabled={codeInput.length !== 8} onClick={joinFamilyCode}>
+                  חיבור
+                </button>
+              </div>
+            </>
+          )}
+          {familyMsg ? <p className="sub">{familyMsg}</p> : null}
         </div>
         <div className="psec">
           <h3>🎙️ הקול של בִּיפּ</h3>

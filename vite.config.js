@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { handleTts } from "./server/ttsHandler.js";
+import { handleSync } from "./server/syncHandler.js";
 
 // בפיתוח: אותה כתובת כמו פונקציית Netlify, עם המפתח מקובץ .env (נקרא מחדש בכל בקשה)
 function ttsDevApi() {
@@ -20,7 +21,25 @@ function ttsDevApi() {
   };
 }
 
+// בפיתוח: אותה כתובת כמו פונקציית הסנכרון של Netlify (האחסון נופל לקובץ זמני)
+function syncDevApi() {
+  return {
+    name: "beep-sync-dev",
+    configureServer(server) {
+      server.middlewares.use("/.netlify/functions/sync", async (req, res) => {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const q = Object.fromEntries(new URL(req.url, "http://localhost").searchParams);
+        const out = await handleSync(req.method, Buffer.concat(chunks).toString("utf8"), q, process.env);
+        res.statusCode = out.status;
+        for (const [k, v] of Object.entries(out.headers)) res.setHeader(k, v);
+        res.end(out.body);
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), ttsDevApi()],
+  plugins: [react(), ttsDevApi(), syncDevApi()],
   server: { port: 5199 },
 });
