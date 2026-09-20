@@ -1909,14 +1909,11 @@ export default function App() {
       serverTtsReady.then(() => setServerTts({ ...SERVER_TTS }));
       const cur = await storGet(CURRENT_KEY);
       const p = us.find((u) => u.id === cur);
-      if (p) {
-        setProfile(p);
-        setScreen("home");
-      } else if (us.length) {
-        setScreen("users");
-      } else {
-        setScreen("welcome");
-      }
+      if (p) setProfile(p);
+      // יש כמה לומדים על המכשיר? שואלים מי לומד עכשיו במקום להיכנס לאחרון
+      if (p && us.length === 1) setScreen("home");
+      else if (us.length) setScreen("users");
+      else setScreen("welcome");
     })();
   }, []);
 
