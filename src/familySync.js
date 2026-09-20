@@ -37,6 +37,12 @@ export async function syncFamily(code, name, users) {
   return { code: data.code, name: data.name, users: mergeUsers(users, data.users) };
 }
 
+// קביעה או שינוי של שם המשפחה (צריך להכיר את השם הנוכחי, או שעדיין אין שם)
+export async function renameFamily(code, name, newName, users) {
+  const data = await post({ code, name, newName, users });
+  return { code: data.code, name: data.name, users: mergeUsers(users, data.users) };
+}
+
 // חיבור מכשיר לקוד קיים — בודק שהקוד קיים לפני שמסנכרנים
 export async function joinFamily(code, name, users) {
   const r = await fetch(`${API}?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}`);

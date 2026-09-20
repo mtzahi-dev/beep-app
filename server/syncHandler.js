@@ -93,10 +93,10 @@ export async function handleSync(method, body, query, env) {
     const users = Array.isArray(req.users) ? req.users.slice(0, MAX_USERS).map(cleanUser) : [];
     if (!users.length) return json(400, { error: "no users" });
     const name = cleanName(req.name);
-    if (name.length < 2) return json(400, { error: "bad name" });
 
-    // בלי קוד — יוצרים חדש
+    // בלי קוד — יוצרים חדש (וכאן שם המשפחה חובה)
     if (!req.code) {
+      if (name.length < 2) return json(400, { error: "bad name" });
       const code = newCode();
       await writeCode(code, { name, users, updatedAt: Date.now() });
       // store מאפשר לוודא שבענן באמת נשמר ב-Blobs ולא בקובץ מקומי זמני
@@ -107,10 +107,15 @@ export async function handleSync(method, body, query, env) {
     if (!CODE_RE.test(code)) return json(400, { error: "bad code" });
     const prev = await readCode(code);
     // בחירת קוד משלכם: אם הקוד כבר תפוס על ידי משפחה אחרת — לא מתחברים אליו בטעות
-    if (req.create && prev) return json(409, { error: "taken" });
-    // הקוד לבדו לא פותח את רשימת הלומדים — גם שם המשפחה חייב להתאים
+    if (req.create) {
+      if (prev) return json(409, { error: "taken" });
+      if (name.length < 2) return json(400, { error: "bad name" });
+    }
+    // הקוד לבדו לא פותח את רשימת הלומדים — גם שם המשפחה חייב להתאים.
+    // למשפחה ותיקה שעדיין אין לה שם, השם הראשון שמגיע נשמר.
     if (prev && prev.name && !sameName(prev.name, name)) return json(403, { error: "name" });
-    const keep = (prev && prev.name) || name;
+    const renamed = cleanName(req.newName);
+    const keep = renamed.length >= 2 ? renamed : (prev && prev.name) || name;
     const merged = mergeUsers(prev ? prev.users : [], users);
     await writeCode(code, { name: keep, users: merged, updatedAt: Date.now() });
     return json(200, { code, name: keep, users: merged });

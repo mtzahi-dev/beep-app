@@ -11,7 +11,7 @@ import { mergeLessons } from "./curriculum/lessons.js";
 import { PHOTOS, PHOTO_CREDITS } from "./curriculum/photos.js";
 import { genMathTopic } from "./curriculum/mathGen.js";
 import QRCode from "qrcode";
-import { createFamily, syncFamily, joinFamily, claimFamily, familyLink } from "./familySync.js";
+import { createFamily, syncFamily, joinFamily, claimFamily, renameFamily, familyLink } from "./familySync.js";
 
 /* ─────────────────────────  בִּיפּ · לומדים בצעדים קטנים  ─────────────────────────
    אב-טיפוס: אפליקציית לימוד לילדים עם קשיי קשב וריכוז (כיתות א'-ט')
@@ -2373,6 +2373,30 @@ export default function App() {
     }
   }
 
+  // קביעת שם המשפחה (או שינויו) כשהמכשיר כבר מחובר לקוד
+  async function saveFamilyName() {
+    sfx.click();
+    const next = nameInput.trim();
+    if (next.length < 2) return setFamilyMsg("שם קצר מדי — לפחות שתי אותיות.");
+    setFamilyMsg("שומר...");
+    try {
+      const { name, users: merged } = await renameFamily(familyCode, familyName, next, users);
+      const saved = name || next;
+      setFamilyName(saved);
+      await storSet(FAMILY_NAME_KEY, saved);
+      setUsers(merged);
+      await persistUsers(merged);
+      setNameInput("");
+      setFamilyMsg("שם המשפחה נשמר. במכשירים האחרים הקלידו בדיוק את אותו שם.");
+    } catch (e) {
+      setFamilyMsg(
+        e.message === "name"
+          ? "השם שמופיע כאן לא מתאים לקוד — נתקו את המכשיר והתחברו מחדש."
+          : "לא הצלחתי לשמור — בדקו אינטרנט."
+      );
+    }
+  }
+
   async function claimCode() {
     sfx.click();
     const code = codeInput.trim().toUpperCase();
@@ -3125,7 +3149,7 @@ export default function App() {
           {familyCode ? (
             <>
               <p className="sub">
-                {familyName ? <><b>{familyName}</b> · </> : null}
+                {familyName ? <><b>{familyName}</b> · </> : <>עדיין בלי שם משפחה · </>}
                 קוד: <b className="famcode">{familyCode}</b>
                 <br />
                 במכשיר השני: סרקו את הברקוד, או הקלידו את שם המשפחה והקוד באזור ההורים.
@@ -3136,6 +3160,18 @@ export default function App() {
               <div className="kidtabs">
                 <button className="chip" onClick={syncNow}>סנכרון עכשיו 🔄</button>
                 <button className="chip" onClick={leaveFamily}>ניתוק המכשיר</button>
+              </div>
+              <div className="famjoin">
+                <input
+                  className="input"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value.slice(0, 30))}
+                  placeholder={familyName ? "שינוי שם המשפחה" : "שם המשפחה"}
+                  aria-label="שם המשפחה"
+                />
+                <button className="chip" disabled={nameInput.trim().length < 2} onClick={saveFamilyName}>
+                  שמירה
+                </button>
               </div>
               <div className="famjoin">
                 <input
