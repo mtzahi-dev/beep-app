@@ -514,6 +514,9 @@ function mathToHebrew(s) {
 const SAY_FIX = [
   [/([^א-ת]|^)קראו(?![א-ת])/g, "$1תקראו"],
   [/([^א-ת]|^)קרא(?![א-ת])/g, "$1תקרא"],
+  [/([^א-ת]|^)השלם(?![א-ת])/g, "$1תשלים"],
+  [/([^א-ת]|^)משווים את(?![א-ת])/g, "$1עושים השוואה בין"],
+  [/([^א-ת]|^)(כש)?משווים(?![א-ת])/g, "$1$2עושים השוואה"],
 ];
 
 // קריינות בעברית — ענן אם מוגדר, אחרת קול הדפדפן
@@ -1748,6 +1751,7 @@ export default function App() {
   // מקצוע ונושא נוכחיים
   const [subject, setSubject] = useState("en");
   const [topic, setTopic] = useState(null);
+  const [lessonSummary, setLessonSummary] = useState(null); // מה נלמד בשיעור האחרון — לכרטיס הסיכום
   const [pendingTopic, setPendingTopic] = useState(null); // הנושא שנבחר לפני אבחון
 
   // אבחון
@@ -2108,25 +2112,19 @@ export default function App() {
     const saidEn = hasEnglish(q.options[q.c]);
     if (saidEn) speak(q.options[q.c]);
     if (q.ex) speakHe(q.ex, { queue: saidEn }); // מקריאים את ההסבר
-    if (ok) {
-      setBurst((b) => b + 1);
-      setLesson((l) => ({
-        ...l,
-        phase: "right",
-        selected: i,
-        fb: PRAISE[Math.floor(Math.random() * PRAISE.length)],
-        correct: l.correct + 1,
-        combo: (l.combo || 0) + 1,
-      }));
-    } else {
-      setLesson((l) => ({
-        ...l,
-        phase: "wrong",
-        selected: i,
-        fb: GENTLE[Math.floor(Math.random() * GENTLE.length)],
-        combo: 0,
-      }));
-    }
+    const state = {
+      phase: ok ? "right" : "wrong",
+      selected: i,
+      fb: ok ? PRAISE[Math.floor(Math.random() * PRAISE.length)] : GENTLE[Math.floor(Math.random() * GENTLE.length)],
+    };
+    if (ok) setBurst((b) => b + 1);
+    setLesson((l) => ({
+      ...l,
+      ...state,
+      correct: l.correct + (ok ? 1 : 0),
+      combo: ok ? (l.combo || 0) + 1 : 0,
+      log: { ...(l.log || {}), [l.i]: state },
+    }));
   }
 
   function nextStep() {
@@ -2137,7 +2135,15 @@ export default function App() {
       finishLesson(l.correct);
       return;
     }
-    setLesson({ ...l, i: l.i + 1, phase: "idle", selected: null, fb: "" });
+    setLesson({ ...l, i: l.i + 1, ...stepState(l.log, l.i + 1) });
+  }
+
+  function lessonPrev() {
+    const l = lesson;
+    if (!l || l.i === 0) return;
+    sfx.click();
+    trackActive();
+    setLesson({ ...l, i: l.i - 1, ...stepState(l.log, l.i - 1) });
   }
 
   function finishLesson(correct) {
@@ -2277,15 +2283,22 @@ export default function App() {
     if (saidEn) speak(step.options[step.c]);
     if (step.ex) speakHe(step.ex, { queue: saidEn });
     if (ok) setBurst((b) => b + 1);
-    setCourse((c) => ({
-      ...c,
+    const state = {
       phase: ok ? "right" : "wrong",
       selected: i,
       fb: ok ? PRAISE[Math.floor(Math.random() * PRAISE.length)] : GENTLE[Math.floor(Math.random() * GENTLE.length)],
+    };
+    setCourse((c) => ({
+      ...c,
+      ...state,
       correct: c.correct + (ok ? 1 : 0),
       combo: ok ? (c.combo || 0) + 1 : 0,
+      log: { ...(c.log || {}), [c.i]: state },
     }));
   }
+
+  // כרטיסייה שכבר נענתה חוזרת עם התשובה שלה; חדשה מתחילה נקייה
+  const stepState = (log, i) => (log && log[i]) || { phase: "idle", selected: null, fb: "" };
 
   function courseNext() {
     const c = course;
@@ -2294,7 +2307,16 @@ export default function App() {
       finishCourse(c);
       return;
     }
-    setCourse({ ...c, i: c.i + 1, phase: "idle", selected: null, fb: "" });
+    setCourse({ ...c, i: c.i + 1, ...stepState(c.log, c.i + 1) });
+  }
+
+  function coursePrev() {
+    const c = course;
+    if (!c || c.i === 0) return;
+    sfx.click();
+    trackActive();
+    setSceneOv(null);
+    setCourse({ ...c, i: c.i - 1, ...stepState(c.log, c.i - 1) });
   }
 
   function finishCourse(c) {
@@ -2326,6 +2348,10 @@ export default function App() {
       p.lastLesson = c.lsn.title;
       saveUser(p);
       return p;
+    });
+    setLessonSummary({
+      title: c.lsn.title,
+      points: c.lsn.steps.filter((s) => s.t === "teach").map((s) => s.title),
     });
     setCourse(null);
     setBurst((b) => b + 1);
@@ -3154,7 +3180,7 @@ export default function App() {
           </button>
         )}
         <button className="btn ghost" onClick={goHome}>
-          ⇦ חזרה לדף הבית
+          ⇨ חזרה לדף הבית
         </button>
       </div>
     );
@@ -3195,7 +3221,7 @@ export default function App() {
           תרגול חופשי 🎯
         </button>
         <button className="btn ghost" onClick={() => { sfx.click(); setScreen("topics"); }}>
-          ⇦ חזרה לנושאים
+          ⇨ חזרה לנושאים
         </button>
       </div>
     );
@@ -3226,6 +3252,9 @@ export default function App() {
         </button>
         <Confetti burst={burst} />
         <StepPath total={total} done={course.i} current={course.i} />
+        {course.i > 0 && (
+          <button className="btn ghost back" onClick={coursePrev}>⇨ אחורה</button>
+        )}
         <Bubble>{courseCheer(course.i, total, profile ? profile.name : "")}</Bubble>
         {step.t === "teach" ? (
           <div className="qcard" key={"t" + course.i}>
@@ -3280,7 +3309,7 @@ export default function App() {
               <div className="hint">🔊 לחצו על מילה כדי לשמוע אותה — או על הרמקול להקראה מלאה</div>
             )}
             <button className="btn" onClick={() => { sfx.click(); trackActive(); courseNext(); }}>
-              הבנתי, ממשיכים ➜
+              הבנתי, ממשיכים ⇦
             </button>
           </div>
         ) : (
@@ -3306,7 +3335,7 @@ export default function App() {
                   className={"btn" + (course.phase === "right" ? " green" : "")}
                   onClick={() => { sfx.click(); trackActive(); courseNext(); }}
                 >
-                  {course.phase === "right" ? "ממשיכים! ➜" : "הבנתי, ממשיכים ➜"}
+                  {course.phase === "right" ? "ממשיכים! ⇦" : "הבנתי, ממשיכים ⇦"}
                 </button>
               </>
             )}
@@ -3332,8 +3361,18 @@ export default function App() {
           <br />
           ענית נכון על {profile.lastCorrect} מתוך {profile.lastTotal} שאלות הבדיקה והרווחת {profile.lastEarned} כוכבים!
         </p>
+        {lessonSummary && lessonSummary.points.length > 0 && (
+          <div className="recap">
+            <div className="recaptitle">📒 מה למדנו בשיעור</div>
+            <ul>
+              {lessonSummary.points.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         <button className="btn green" onClick={() => startLesson(topic)}>
-          עכשיו תרגול על מה שלמדנו! 🎯
+          למבחן הידע על מה שלמדנו! 🎯
         </button>
         <button className="btn" onClick={() => { sfx.click(); setScreen("topicmenu"); }}>
           עוד שיעור 📖
@@ -3372,6 +3411,9 @@ export default function App() {
         </button>
         <Confetti burst={burst} />
         <StepPath total={lesson.qs.length} done={lesson.i} current={lesson.i} />
+        {lesson.i > 0 && (
+          <button className="btn ghost back" onClick={lessonPrev}>⇨ אחורה</button>
+        )}
         <Bubble>{lesson.qs.length === 5 ? ENCOURAGE[lesson.i] : courseCheer(lesson.i, lesson.qs.length, profile.name)}</Bubble>
         <QuestionCard key={"l" + lesson.i} q={q} onAnswer={lessonAnswer} phase={lesson.phase} selected={lesson.selected} />
         {lesson.phase !== "idle" && (
@@ -3388,7 +3430,7 @@ export default function App() {
               className={"btn" + (lesson.phase === "right" ? " green" : "")}
               onClick={() => { sfx.click(); trackActive(); nextStep(); }}
             >
-              {lesson.phase === "right" ? "ממשיכים! ➜" : "הבנתי, ממשיכים ➜"}
+              {lesson.phase === "right" ? "ממשיכים! ⇦" : "הבנתי, ממשיכים ⇦"}
             </button>
           </>
         )}
