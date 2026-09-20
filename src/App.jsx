@@ -659,6 +659,7 @@ const USERS_KEY = "lomi:users";
 const CURRENT_KEY = "lomi:current";
 const OLD_KEY = "lomi:profile";
 const FAMILY_KEY = "lomi:family"; // קוד משפחה — מחבר את הלומדים בין מכשירים
+const FAMILY_NAME_KEY = "lomi:familyName"; // שם המשפחה — נדרש גם הוא כדי לראות את הלומדים
 
 async function storGet(k) {
   try {
@@ -1817,6 +1818,8 @@ export default function App() {
   const [topic, setTopic] = useState(null);
   const [lessonSummary, setLessonSummary] = useState(null); // מה נלמד בשיעור האחרון — לכרטיס הסיכום
   const [familyCode, setFamilyCode] = useState("");
+  const [familyName, setFamilyName] = useState("");
+  const [nameInput, setNameInput] = useState("");
   const [familyMsg, setFamilyMsg] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [qrUrl, setQrUrl] = useState("");
@@ -1889,17 +1892,21 @@ export default function App() {
       let us = await loadUsers();
       // יש קוד משפחה? מביאים את הלומדים משאר המכשירים לפני שמחליטים מה להציג
       // הגיעו מסריקת ברקוד? מצטרפים למשפחה שבכתובת
-      const scanned = new URLSearchParams(location.search).get("family");
+      const params = new URLSearchParams(location.search);
+      const scanned = params.get("family");
       if (scanned) {
         await storSet(FAMILY_KEY, scanned.toUpperCase());
+        await storSet(FAMILY_NAME_KEY, params.get("fam") || "");
         history.replaceState(null, "", location.pathname);
       }
       const fam = await storGet(FAMILY_KEY);
+      const famName = (await storGet(FAMILY_NAME_KEY)) || "";
       if (fam) {
         setFamilyCode(fam);
+        setFamilyName(famName);
         try {
           const res = await Promise.race([
-            syncFamily(fam, us),
+            syncFamily(fam, famName, us),
             new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), 2500)),
           ]);
           us = res.users;
@@ -1951,10 +1958,10 @@ export default function App() {
       setQrUrl("");
       return;
     }
-    QRCode.toDataURL(familyLink(familyCode), { width: 300, margin: 1, color: { dark: "#20305A", light: "#FFFFFF" } })
+    QRCode.toDataURL(familyLink(familyCode, familyName), { width: 300, margin: 1, color: { dark: "#20305A", light: "#FFFFFF" } })
       .then(setQrUrl)
       .catch(() => setQrUrl(""));
-  }, [familyCode]);
+  }, [familyCode, familyName]);
 
   // הודעות טעינה מתחלפות
   useEffect(() => {
@@ -2315,7 +2322,7 @@ export default function App() {
     if (!familyCode) return;
     clearTimeout(famTimer.current);
     famTimer.current = setTimeout(() => {
-      syncFamily(familyCode, list)
+      syncFamily(familyCode, familyName, list)
         .then(({ users: merged }) => { setUsers(merged); persistUsers(merged); })
         .catch(() => {});
     }, 4000);
@@ -2323,11 +2330,15 @@ export default function App() {
 
   async function makeFamily() {
     sfx.click();
+    const name = (nameInput || familyName).trim();
+    if (name.length < 2) return setFamilyMsg("קודם כותבים שם משפחה — הוא יזהה אתכם יחד עם הקוד.");
     setFamilyMsg("יוצר קוד...");
     try {
-      const { code, users: merged } = await createFamily(users);
+      const { code, users: merged } = await createFamily(name, users);
       setFamilyCode(code);
+      setFamilyName(name);
       await storSet(FAMILY_KEY, code);
+      await storSet(FAMILY_NAME_KEY, name);
       setUsers(merged);
       await persistUsers(merged);
       setFamilyMsg("הקוד מוכן! הקלידו אותו באזור ההורים במכשיר השני.");
@@ -2338,29 +2349,43 @@ export default function App() {
 
   async function joinFamilyCode() {
     sfx.click();
+    const name = (nameInput || familyName).trim();
+    if (name.length < 2) return setFamilyMsg("צריך גם את שם המשפחה, בדיוק כמו שנכתב במכשיר הראשון.");
     setFamilyMsg("מחבר...");
     try {
-      const { code, users: merged } = await joinFamily(codeInput, users);
+      const { code, users: merged } = await joinFamily(codeInput, name, users);
       setFamilyCode(code);
+      setFamilyName(name);
       await storSet(FAMILY_KEY, code);
+      await storSet(FAMILY_NAME_KEY, name);
       setUsers(merged);
       await persistUsers(merged);
       setCodeInput("");
       setFamilyMsg(`מחובר! ${merged.length} לומדים במכשיר הזה.`);
     } catch (e) {
-      setFamilyMsg(e.message === "no-code" ? "לא מצאתי קוד כזה — בדקו את האותיות." : "החיבור נכשל — בדקו אינטרנט.");
+      setFamilyMsg(
+        e.message === "no-code"
+          ? "לא מצאתי קוד כזה — בדקו את האותיות."
+          : e.message === "name"
+            ? "שם המשפחה לא מתאים לקוד הזה."
+            : "החיבור נכשל — בדקו אינטרנט."
+      );
     }
   }
 
   async function claimCode() {
     sfx.click();
     const code = codeInput.trim().toUpperCase();
+    const name = (nameInput || familyName).trim();
+    if (name.length < 2) return setFamilyMsg("קודם כותבים שם משפחה.");
     if (code.length < 4) return setFamilyMsg("קוד קצר מדי — לפחות 4 תווים.");
     setFamilyMsg("שומר...");
     try {
-      const { users: merged } = await claimFamily(code, users);
+      const { users: merged } = await claimFamily(code, name, users);
       setFamilyCode(code);
+      setFamilyName(name);
       await storSet(FAMILY_KEY, code);
+      await storSet(FAMILY_NAME_KEY, name);
       setUsers(merged);
       await persistUsers(merged);
       setCodeInput("");
@@ -2374,7 +2399,7 @@ export default function App() {
     sfx.click();
     setFamilyMsg("מסנכרן...");
     try {
-      const { users: merged } = await syncFamily(familyCode, users);
+      const { users: merged } = await syncFamily(familyCode, familyName, users);
       setUsers(merged);
       await persistUsers(merged);
       setFamilyMsg(`מעודכן — ${merged.length} לומדים.`);
@@ -2386,7 +2411,9 @@ export default function App() {
   async function leaveFamily() {
     sfx.click();
     setFamilyCode("");
+    setFamilyName("");
     await storSet(FAMILY_KEY, "");
+    await storSet(FAMILY_NAME_KEY, "");
     setFamilyMsg("המכשיר נותק. הלומדים שכאן נשארו כאן.");
   }
 
@@ -3098,9 +3125,10 @@ export default function App() {
           {familyCode ? (
             <>
               <p className="sub">
-                קוד המשפחה שלכם: <b className="famcode">{familyCode}</b>
+                {familyName ? <><b>{familyName}</b> · </> : null}
+                קוד: <b className="famcode">{familyCode}</b>
                 <br />
-                הקלידו אותו באזור ההורים בטלפון או במחשב אחר — וכל הלומדים וההתקדמות יופיעו גם שם.
+                במכשיר השני: סרקו את הברקוד, או הקלידו את שם המשפחה והקוד באזור ההורים.
               </p>
               {qrUrl ? (
                 <img className="famqr" src={qrUrl} alt={`ברקוד לחיבור עם הקוד ${familyCode}`} />
@@ -3125,8 +3153,17 @@ export default function App() {
           ) : (
             <>
               <p className="sub">
-                הלומדים נשמרים בכל מכשיר בנפרד. קוד משפחה מחבר ביניהם: יוצרים קוד פה, ומקלידים אותו במכשירים האחרים.
+                הלומדים נשמרים בכל מכשיר בנפרד. שם המשפחה והקוד מחברים ביניהם — ורק מי שיש לו את שניהם רואה את הלומדים שלכם.
               </p>
+              <div className="famjoin">
+                <input
+                  className="input"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value.slice(0, 30))}
+                  placeholder="שם המשפחה"
+                  aria-label="שם המשפחה"
+                />
+              </div>
               <div className="kidtabs">
                 <button className="chip" onClick={makeFamily}>צור קוד אקראי ✨</button>
               </div>

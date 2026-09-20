@@ -4,42 +4,45 @@
 import { mergeUsers } from "../server/mergeUsers.js";
 
 const API = "/.netlify/functions/sync";
+const ERR = { 404: "no-code", 409: "taken", 403: "name" };
 const post = async (payload) => {
   const r = await fetch(API, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!r.ok) throw new Error(r.status === 404 ? "no-code" : r.status === 409 ? "taken" : "failed");
+  if (!r.ok) throw new Error(ERR[r.status] || "failed");
   return r.json();
 };
 
 // קוד שההורה בוחר בעצמו — נתפס רק אם הוא פנוי
-export async function claimFamily(code, users) {
-  const data = await post({ code, users, create: true });
-  return { code: data.code, users: data.users };
+export async function claimFamily(code, name, users) {
+  const data = await post({ code, name, users, create: true });
+  return { code: data.code, name: data.name, users: data.users };
 }
 
 // הקישור שמאחורי הברקוד — פתיחה שלו במכשיר אחר מחברת אותו למשפחה
-export const familyLink = (code) => `${location.origin}/?family=${encodeURIComponent(code)}`;
+export const familyLink = (code, name) =>
+  `${location.origin}/?family=${encodeURIComponent(code)}&fam=${encodeURIComponent(name || "")}`;
 
 // יצירת קוד חדש מהלומדים שיש במכשיר
-export async function createFamily(users) {
-  const data = await post({ users });
-  return { code: data.code, users: data.users };
+export async function createFamily(name, users) {
+  const data = await post({ name, users });
+  return { code: data.code, name: data.name, users: data.users };
 }
 
 // סנכרון דו-כיווני: מה שיש כאן עולה, ומה שיש שם יורד
-export async function syncFamily(code, users) {
-  const data = await post({ code, users });
-  return { code: data.code, users: mergeUsers(users, data.users) };
+export async function syncFamily(code, name, users) {
+  const data = await post({ code, name, users });
+  return { code: data.code, name: data.name, users: mergeUsers(users, data.users) };
 }
 
 // חיבור מכשיר לקוד קיים — בודק שהקוד קיים לפני שמסנכרנים
-export async function joinFamily(code, users) {
-  const r = await fetch(`${API}?code=${encodeURIComponent(code)}`);
+export async function joinFamily(code, name, users) {
+  const r = await fetch(`${API}?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}`);
   if (r.status === 404) throw new Error("no-code");
+  if (r.status === 403) throw new Error("name");
   if (!r.ok) throw new Error("failed");
   const data = await r.json();
-  return syncFamily(code, mergeUsers(users, data.users));
+  return syncFamily(code, name, mergeUsers(users, data.users));
 }
