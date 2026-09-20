@@ -10,7 +10,8 @@ import os from "node:os";
 import { mergeUsers, MAX_USERS } from "./mergeUsers.js";
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // בלי אותיות שמתבלבלות (I,O,0,1)
-const CODE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
+// קוד אקראי הוא 8 תווים, אבל הורה יכול לבחור קוד משלו (4–16 אותיות וספרות)
+const CODE_RE = /^[A-Z0-9]{4,16}$/;
 const MAX_BYTES = 300 * 1024;
 
 const json = (status, obj) => ({
@@ -98,6 +99,8 @@ export async function handleSync(method, body, query, env) {
     const code = String(req.code).toUpperCase();
     if (!CODE_RE.test(code)) return json(400, { error: "bad code" });
     const prev = await readCode(code);
+    // בחירת קוד משלכם: אם הקוד כבר תפוס על ידי משפחה אחרת — לא מתחברים אליו בטעות
+    if (req.create && prev) return json(409, { error: "taken" });
     const merged = mergeUsers(prev ? prev.users : [], users);
     await writeCode(code, { users: merged, updatedAt: Date.now() });
     return json(200, { code, users: merged });

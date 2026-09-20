@@ -10,7 +10,8 @@ import { addToBank } from "./curriculum/banks.js";
 import { mergeLessons } from "./curriculum/lessons.js";
 import { PHOTOS, PHOTO_CREDITS } from "./curriculum/photos.js";
 import { genMathTopic } from "./curriculum/mathGen.js";
-import { createFamily, syncFamily, joinFamily } from "./familySync.js";
+import QRCode from "qrcode";
+import { createFamily, syncFamily, joinFamily, claimFamily, familyLink } from "./familySync.js";
 
 /* ─────────────────────────  בִּיפּ · לומדים בצעדים קטנים  ─────────────────────────
    אב-טיפוס: אפליקציית לימוד לילדים עם קשיי קשב וריכוז (כיתות א'-ט')
@@ -518,12 +519,12 @@ function mathToHebrew(s) {
 // מילים שהקריין הוגה אחרת מהניקוד הנכון. נבדקו אחת-אחת מול מנוע ההקראה (scratchpad/probe-niqqud2.mjs):
 // לכל מילה סונתז הכתיב הרגיל מול המנוקד, ורק מילים שנשמעו שונה נכנסו לכאן.
 const HEB_SAY = {
-  "המספר": "הַמִּסְפָּר", "עשרות": "עֲשָׂרוֹת", "העשרות": "הָעֲשָׂרוֹת", "המכנה": "הַמְּכַנֶּה",
+  "המספר": "המיספר", "עשרות": "עֲשָׂרוֹת", "העשרות": "הָעֲשָׂרוֹת", "המכנה": "הַמְּכַנֶּה",
   "שורש": "שֹׁרֶשׁ", "שטח": "שֶׁטַח", "שאורכו": "שֶׁאָרְכּוֹ", "במשולש": "בַּמְּשֻׁלָּשׁ",
   "קהה": "קֵהָה", "באות": "בְּאוֹת", "והפועל": "וְהַפֹּעַל", "בסביל": "בְּסָבִיל",
   "שמש": "שֶׁמֶשׁ", "השמש": "הַשֶּׁמֶשׁ", "כוכב": "כּוֹכָב", "היתר": "הַיֶּתֶר", "והיתר": "וְהַיֶּתֶר",
-  "חסרה": "חֲסֵרָה", "בספרת": "בְּסִפְרַת", "מעבר": "מַעֲבָר", "ביחידות": "בַּיְּחִידוֹת",
-  "משני": "מִשְּׁנֵי", "לעוגה": "לָעוּגָה", "החופשי": "הַחָפְשִׁי", "במקום": "בִּמְקוֹם",
+  "חסרה": "חסירה", "בספרת": "בְּסִפְרַת", "מעבר": "מַעֲבָר", "ביחידות": "בַּיְּחִידוֹת",
+  "משני": "מישני", "לעוגה": "לָעוּגָה", "החופשי": "הַחָפְשִׁי", "במקום": "בִּמְקוֹם",
   "זהה": "זֵהֶה", "ובשאלה": "וּבַשְּׁאֵלָה",
   "כל": "כָּל", "לכל": "לְכָל", "בכל": "בְּכָל", "מכל": "מִכָּל", "כולם": "כּוּלָּם",
   "וחיסור": "וְחִסּוּר", "בקופסה": "בַּקּוּפְסָה", "אדום": "אָדוֹם", "אדומים": "אֲדוּמִּים",
@@ -532,7 +533,7 @@ const HEB_SAY = {
   "עובדה": "עוּבְדָּה", "בשקית": "בְּשַׂקִּית", "הארץ": "הָאָרֶץ", "בריבוע": "בָּרִיבּוּעַ",
   "מעולה": "מְעוּלֶּה",
   "חיים": "חַיִּים", "המים": "הַמַּיִם", "לעשרות": "לַעֲשָׂרוֹת", "שאורך": "שֶׁאוֹרֶךְ",
-  "כיסא": "כִּיסֵּא", "לכיסא": "לַכִּיסֵּא", "נתרגל": "נִתְרַגֵּל", "לדף": "לְדַף", "עשה": "עָשָׂה",
+  "כיסא": "כִּיסֵּא", "לכיסא": "לַכִּיסֵּא", "נתרגל": "ניתרגל", "לדף": "לְדַף", "עשה": "עָשָׂה",
   "ריאות": "רֵיאוֹת", "הריאות": "הָרֵיאוֹת", "הקופסה": "הַקּוּפְסָה", "גבוה": "גָּבוֹהַּ",
   "מילות": "מִילּוֹת", "עיצור": "עִיצּוּר", "האלפים": "הָאֲלָפִים", "נועה": "נוֹעָה",
   "יקרה": "יִקְרֶה", "עפו": "עָפוּ", "קנה": "קָנָה", "דרך": "דֶּרֶךְ", "האדמה": "הָאֲדָמָה",
@@ -1818,6 +1819,7 @@ export default function App() {
   const [familyCode, setFamilyCode] = useState("");
   const [familyMsg, setFamilyMsg] = useState("");
   const [codeInput, setCodeInput] = useState("");
+  const [qrUrl, setQrUrl] = useState("");
   const famTimer = useRef(null);
   const [pendingTopic, setPendingTopic] = useState(null); // הנושא שנבחר לפני אבחון
 
@@ -1886,6 +1888,12 @@ export default function App() {
     (async () => {
       let us = await loadUsers();
       // יש קוד משפחה? מביאים את הלומדים משאר המכשירים לפני שמחליטים מה להציג
+      // הגיעו מסריקת ברקוד? מצטרפים למשפחה שבכתובת
+      const scanned = new URLSearchParams(location.search).get("family");
+      if (scanned) {
+        await storSet(FAMILY_KEY, scanned.toUpperCase());
+        history.replaceState(null, "", location.pathname);
+      }
       const fam = await storGet(FAMILY_KEY);
       if (fam) {
         setFamilyCode(fam);
@@ -1936,6 +1944,17 @@ export default function App() {
       else setScreen("welcome");
     })();
   }, []);
+
+  // ברקוד לחיבור מהיר: סורקים אותו בנייד והמכשיר מצטרף למשפחה
+  useEffect(() => {
+    if (!familyCode) {
+      setQrUrl("");
+      return;
+    }
+    QRCode.toDataURL(familyLink(familyCode), { width: 300, margin: 1, color: { dark: "#20305A", light: "#FFFFFF" } })
+      .then(setQrUrl)
+      .catch(() => setQrUrl(""));
+  }, [familyCode]);
 
   // הודעות טעינה מתחלפות
   useEffect(() => {
@@ -2330,6 +2349,24 @@ export default function App() {
       setFamilyMsg(`מחובר! ${merged.length} לומדים במכשיר הזה.`);
     } catch (e) {
       setFamilyMsg(e.message === "no-code" ? "לא מצאתי קוד כזה — בדקו את האותיות." : "החיבור נכשל — בדקו אינטרנט.");
+    }
+  }
+
+  async function claimCode() {
+    sfx.click();
+    const code = codeInput.trim().toUpperCase();
+    if (code.length < 4) return setFamilyMsg("קוד קצר מדי — לפחות 4 תווים.");
+    setFamilyMsg("שומר...");
+    try {
+      const { users: merged } = await claimFamily(code, users);
+      setFamilyCode(code);
+      await storSet(FAMILY_KEY, code);
+      setUsers(merged);
+      await persistUsers(merged);
+      setCodeInput("");
+      setFamilyMsg("הקוד שלכם מוכן! סרקו את הברקוד או הקלידו אותו במכשיר השני.");
+    } catch (e) {
+      setFamilyMsg(e.message === "taken" ? "הקוד הזה כבר תפוס — נסו אחר." : "לא הצלחתי לשמור — בדקו אינטרנט.");
     }
   }
 
@@ -3065,9 +3102,24 @@ export default function App() {
                 <br />
                 הקלידו אותו באזור ההורים בטלפון או במחשב אחר — וכל הלומדים וההתקדמות יופיעו גם שם.
               </p>
+              {qrUrl ? (
+                <img className="famqr" src={qrUrl} alt={`ברקוד לחיבור עם הקוד ${familyCode}`} />
+              ) : null}
               <div className="kidtabs">
                 <button className="chip" onClick={syncNow}>סנכרון עכשיו 🔄</button>
                 <button className="chip" onClick={leaveFamily}>ניתוק המכשיר</button>
+              </div>
+              <div className="famjoin">
+                <input
+                  className="input"
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))}
+                  placeholder="לשנות לקוד משלכם"
+                  aria-label="קוד משפחה חדש"
+                />
+                <button className="chip" disabled={codeInput.length < 4} onClick={claimCode}>
+                  שינוי
+                </button>
               </div>
             </>
           ) : (
@@ -3076,18 +3128,21 @@ export default function App() {
                 הלומדים נשמרים בכל מכשיר בנפרד. קוד משפחה מחבר ביניהם: יוצרים קוד פה, ומקלידים אותו במכשירים האחרים.
               </p>
               <div className="kidtabs">
-                <button className="chip" onClick={makeFamily}>צור קוד משפחה ✨</button>
+                <button className="chip" onClick={makeFamily}>צור קוד אקראי ✨</button>
               </div>
               <div className="famjoin">
                 <input
                   className="input"
                   value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, "").slice(0, 8))}
-                  placeholder="כבר יש לכם קוד? הקלידו אותו"
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))}
+                  placeholder="קוד משפחה — להתחבר או לבחור"
                   aria-label="קוד משפחה"
                 />
-                <button className="chip" disabled={codeInput.length !== 8} onClick={joinFamilyCode}>
+                <button className="chip" disabled={codeInput.length < 4} onClick={joinFamilyCode}>
                   חיבור
+                </button>
+                <button className="chip" disabled={codeInput.length < 4} onClick={claimCode}>
+                  קוד חדש
                 </button>
               </div>
             </>
