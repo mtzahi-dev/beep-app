@@ -161,12 +161,14 @@ export function Hops({ sc, playing, playKey }) {
     <>
       <div className="sline" />
       {range(hi - lo + 1).map((d) => (
-        <span key={d} className={"stick" + (lo + d === to ? " goal" : "") + (lo + d > from && lo + d <= pos ? " passed" : "")} style={{ left: xOf(lo + d) + "%" }}>
+        <span key={d} className={"stick" + (lo + d === to ? " goal" : "") + (lo + d === from ? " start" : "") + (lo + d > from && lo + d <= pos ? " passed" : "")} style={{ left: xOf(lo + d) + "%" }}>
           {lo + d}
         </span>
       ))}
+      {/* דגל ביעד וצפרדע בהתחלה — רואים מאיפה לאן, וכמה קפיצות חסרות */}
+      <Spr e="🏁" x={xOf(to)} y={20} w={9} h={18} cls="pop" />
       <Spr key={pos} e="🐸" x={xOf(pos)} y={40} w={14} h={34} cls="hop" />
-      <Badge x={50} y={10} text={"+" + (pos - from)} tone="big" show={beat > 0} />
+      <Badge x={50} y={10} text={beat > 0 ? "+" + (pos - from) : `${to} − ${from} = ?`} tone="big" show />
     </>
   );
 }

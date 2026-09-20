@@ -30,6 +30,7 @@ export const TOPICS = {
     T("powers", "חזקות ושורשים", "⚡", [6, 8]),
     T("pyth", "משפט פיתגורס", "📐", [7, 8]),
     T("linear", "פונקציה קווית", "📈", [7, 8]),
+    T("review", "תרגול נושאים שנלמדו", "🔁", [0, 8]),
     T("mix", "הפתעה!", "🎲", [0, 8]),
   ],
   // כיתה א': אותיות ומילים. מופיע בדף הבית רק ללומדים בכיתה א' (ראה SUBJECTS ב-App.jsx)
@@ -38,6 +39,7 @@ export const TOPICS = {
     T("sounds", "האות שפותחת מילה", "🔠", [0, 1]),
     T("syll", "הברות ומחיאות כף", "🧩", [0, 1]),
     T("words", "מילים ראשונות", "📕", [0, 1]),
+    T("review", "תרגול נושאים שנלמדו", "🔁", [0, 1]),
     T("mix", "הפתעה!", "🎲", [0, 1]),
   ],
   en: [
@@ -61,6 +63,7 @@ export const TOPICS = {
     T("perfect", "Present Perfect", "✅", [6, 8], { ai: "present perfect: have/has + past participle, ever/never/already/yet" }),
     T("cond", "משפטי תנאי If", "🔀", [7, 8], { ai: "first and second conditionals" }),
     T("passive", "סביל Passive", "🔁", [7, 8], { ai: "passive voice in present and past" }),
+    T("review", "תרגול נושאים שנלמדו", "🔁", [0, 8]),
     T("mix", "הפתעה!", "🎲", [0, 8], { ai: "a fun varied mix of vocabulary, sentences and level-appropriate grammar" }),
   ],
   heb: [
@@ -79,6 +82,7 @@ export const TOPICS = {
     T("fact", "עובדה או דעה", "⚖️", [4, 8]),
     T("fig", "שפה ציורית", "🎨", [5, 8]),
     T("argue", "טקסט טיעוני", "📣", [6, 8]),
+    T("review", "תרגול נושאים שנלמדו", "🔁", [0, 8]),
     T("mix", "הפתעה!", "🎲", [0, 8]),
   ],
   sci: [
@@ -99,6 +103,7 @@ export const TOPICS = {
     T("photosyn", "פוטוסינתזה", "🍃", [5, 8], { photo: "leaf" }),
     T("systems", "מערכות בגוף", "🫁", [5, 8], { photo: "heart" }),
     T("chem", "חומרים ותגובות", "🧪", [6, 8], { photo: "lab" }),
+    T("review", "תרגול נושאים שנלמדו", "🔁", [0, 8]),
     T("mix", "הפתעה!", "🎲", [0, 8]),
   ],
 };

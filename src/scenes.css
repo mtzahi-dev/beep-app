@@ -59,6 +59,7 @@
 .stick::before { content:""; position:absolute; left:50%; top:-9cqh; width:.7cqh; height:5cqh; background:#B9C9DE; }
 .stick.passed { color:#6D5AE6; }
 .stick.goal { color:#218B5E; }
+.stick.start { color:#5546C8; }
 .sarray { position:absolute; left:50%; top:44%; height:66%; max-width:84%; transform:translate(-50%,-50%); display:grid; gap:.5cqh; }
 .sdot { border-radius:50%; background:#D9E6F2; aspect-ratio:1; transition:background .3s; }
 .sdot.lit { background:#FFC43D; }

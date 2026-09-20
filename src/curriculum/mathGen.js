@@ -47,7 +47,7 @@ M.add = (lv) => {
   }
   const a = rnd(6, 9), b = rnd(11 - a, 9), need = 10 - a;
   return { q: "חיבור עם מעבר עשר:", en: `${a} + ${b} = ___`, ...opts(a + b, [a + b - 1, a + b + 1, a + b - 10, a + b + 10]),
-    ex: `${a} + ${need} = 10, ונשאר עוד ${b - need} → ${a + b}`, scene: { type: "ten", a, b } };
+    ex: `${a} + ${need} = 10, ונשאר עוד ${b - need} → ${a + b}`, scene: { type: "ten", a, b, eq: `${a} + ${b} = ${a + b}` } };
 };
 
 M.sub = (lv) => {

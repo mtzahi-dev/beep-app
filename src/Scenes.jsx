@@ -27,7 +27,8 @@ export function Scene({ sc, playing = false, playKey = 0, size = "card", onClick
   return (
     <div className={"stage " + size + (onClick ? " tappable" : "")} dir="ltr" onClick={onClick} aria-hidden="true">
       <C sc={sc} playing={playing} playKey={playKey} />
-      {playing && sc.eq && <div className="scap" key={playKey}>{sc.eq}</div>}
+      {/* התרגיל עצמו מתחת לציור: לפני התשובה בלי הפתרון, ואחריה עם הפתרון */}
+      {sc.eq && <div className="scap" key={playKey}>{playing ? sc.eq : String(sc.eq).replace(/=\s*[^=]*$/, "= ?")}</div>}
     </div>
   );
 }

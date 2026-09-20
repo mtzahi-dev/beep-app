@@ -5,6 +5,7 @@ import { Scene, SceneOverlay, sceneFor, setupSafe, registerWords } from "./Scene
 import "./app.css";
 import { TOPICS, inGrade, gradeLabel, TOPIC_ALIASES } from "./curriculum/topics.js";
 import { practiceFor, mixPractice } from "./curriculum/practice.js";
+import { reviewPractice } from "./curriculum/review.js";
 import { addToBank } from "./curriculum/banks.js";
 import { mergeLessons } from "./curriculum/lessons.js";
 import { PHOTOS, PHOTO_CREDITS } from "./curriculum/photos.js";
@@ -1406,7 +1407,7 @@ function recommendNext(p, onlySub = null) {
   for (const sub of Object.keys(TOPICS)) {
     if (onlySub && sub !== onlySub) continue;
     for (const t of TOPICS[sub]) {
-      if (t.id === "mix" || !inGrade(t, p.grade)) continue;
+      if (t.id === "mix" || t.id === "learned" || t.id === "review" || !inGrade(t, p.grade)) continue;
       const s = stats[sub + ":" + t.id];
       cands.push({ sub, t, ratio: s ? s.c / s.t : null, last: s ? s.last : -1 });
     }
@@ -1659,9 +1660,10 @@ function QuestionCard({ q, onAnswer, phase, selected }) {
   // לפני שעונים: בלי כיתובים שחושפים את התשובה
   const safeSc = useMemo(() => setupSafe(sc, q.options[q.c]), [sc, q]);
 
-  // הקראה אוטומטית: ההנחיה בעברית, ואז המשפט המלא (אנגלית או עברית)
+  // הקראה אוטומטית: ההנחיה בעברית, ואז המשפט המלא (אנגלית או עברית).
+  // q.say = נוסח להקראה כשהכתוב על המסך לא נקרא יפה ("כ_ור" נאמר "כדור")
   useEffect(() => {
-    speakHe(q.q);
+    speakHe(q.say || q.q);
     if (q.en) speakAny(q.en, { queue: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2028,6 +2030,19 @@ export default function App() {
     markActiveStart();
     setSubject(subj);
     setTopic(topicObj);
+    // תרגול חוזר: 6 שאלות מהנושאים שכבר תורגלו במקצוע, עם דגש על מה שהיה קשה
+    if (topicObj.id === "review") {
+      // אוצר מילים באנגלית נבנה במחולל של האפליקציה, ולא ב-practiceFor
+      const qs = reviewPractice(subj, TOPICS[subj], profile, 6, (tid) =>
+        subj === "en" && tid === "vocab" ? vocabLesson(profile.levels.en, []) : null
+      );
+      if (qs.length) {
+        recordSeen(subj, qs);
+        setLesson({ qs, i: 0, phase: "idle", selected: null, fb: "", correct: 0 });
+        setScreen("lesson");
+        return;
+      }
+    }
     // תרגול מילים שנלמדו — נבנה מהמילים של הלומד עצמו, ולא מהמאגר או מהמחוללים
     if (subj === "en" && topicObj.id === "learned") {
       const qs = learnedWordsLesson(profile, 10);
@@ -2041,7 +2056,7 @@ export default function App() {
       const seenS = (profile.seen && profile.seen[subj]) || [];
       const lvlS = profile.levels[subj];
       const qsNew = topicObj.id === "mix"
-        ? mixPractice(subj, TOPICS[subj].filter((t) => inGrade(t, profile.grade) && t.id !== "learned"), lvlS, seenS)
+        ? mixPractice(subj, TOPICS[subj].filter((t) => inGrade(t, profile.grade) && t.id !== "learned" && t.id !== "review"), lvlS, seenS)
         : practiceFor(subj, topicObj.id, lvlS, seenS);
       if (qsNew && qsNew.length >= 5) {
         recordSeen(subj, qsNew);
@@ -2134,7 +2149,7 @@ export default function App() {
     const l = lesson;
     if (!l) return;
     if (l.i + 1 >= l.qs.length) {
-      finishLesson(l.correct);
+      finishLesson(l.correct, l.qs.length);
       return;
     }
     setLesson({ ...l, i: l.i + 1, ...stepState(l.log, l.i + 1) });
@@ -2148,12 +2163,12 @@ export default function App() {
     setLesson({ ...l, i: l.i - 1, ...stepState(l.log, l.i - 1) });
   }
 
-  function finishLesson(correct) {
+  function finishLesson(correct, total = 5) {
     const today = todayStr();
     const secs = collectSecs();
     setProfile((prev) => {
       const p = { ...prev, levels: { ...prev.levels }, perfect: { ...prev.perfect } };
-      const earned = correct + (correct === 5 ? 2 : 0);
+      const earned = correct + (correct === total ? 2 : 0);
       p.stars += earned;
       p.totalSessions += 1;
       if (p.lastDay === today) {
@@ -2167,7 +2182,7 @@ export default function App() {
       // יומן פרקים — הבסיס לדוח ההורים ולהמלצות
       p.history = [
         ...(p.history || []),
-        { at: Date.now(), subject, topic: topic ? topic.id : "mix", correct, total: 5, level: p.levels[subject] },
+        { at: Date.now(), subject, topic: topic ? topic.id : "mix", correct, total, level: p.levels[subject] },
       ].slice(-100);
       if (correct === 5) {
         p.perfect[subject] += 1;
@@ -3456,8 +3471,8 @@ export default function App() {
         <h1>כל הכבוד, {profile.name}!</h1>
         <div className="bigstars">{"⭐".repeat(Math.max(1, Math.min(7, profile.lastEarned)))}</div>
         <p className="sub">
-          ענית נכון על {profile.lastCorrect} מתוך 5 והרווחת {profile.lastEarned} כוכבים!
-          {profile.lastCorrect === 5 ? " פרק מושלם! 🤩" : " התקדמות מעולה!"}
+          ענית נכון על {profile.lastCorrect} מתוך {profile.lastTotal || 5} והרווחת {profile.lastEarned} כוכבים!
+          {profile.lastCorrect === (profile.lastTotal || 5) ? " פרק מושלם! 🤩" : " התקדמות מעולה!"}
         </p>
         {leveled && (
           <div className="explain" style={{ background: "#EAFBF2", borderColor: "#9FE3C3" }}>

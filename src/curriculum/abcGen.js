@@ -115,7 +115,8 @@ G.words = (lv) => {
   const masked = w.slice(0, i) + "_" + w.slice(i + 1);
   const options = letterOpts(w[i]);
   return {
-    q: `איזו אות חסרה במילה ${masked}?`, options, c: options.indexOf(w[i]), ex: `${w} ${e}`,
+    q: `איזו אות חסרה במילה ${masked}?`, say: `איזו אות חסרה במילה ${w}?`,
+    options, c: options.indexOf(w[i]), ex: `${w} ${e}`,
     pic: e, scene: { type: "fact", items: [e], tokens: [masked, "___"], answer: w },
   };
 };
