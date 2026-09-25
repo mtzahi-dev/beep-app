@@ -56,20 +56,23 @@ export function Time({ sc, playing, playKey }) {
 
 // מילות מקום: in / on / under — החפץ זז למקום
 const PLACE = {
-  table: { on: { y: 45 }, in: { y: 45 }, under: { y: 80 } },
-  thing: { on: { y: 24 }, in: { y: 58 }, under: { y: 88 } },
+  table: { on: { y: 45 }, in: { y: 45 }, under: { y: 80 }, "next to": { y: 62, x: 84 }, behind: { y: 36, back: true } },
+  thing: { on: { y: 24 }, in: { y: 58 }, under: { y: 88 }, "next to": { y: 57, x: 84 }, behind: { y: 40, back: true } },
 };
 export function Place({ sc, playing, playKey }) {
   const order = sc.cycle ? ["in", "on", "under"] : [sc.where];
   const beat = useBeats(order.length, 1400, playing, playKey);
   const where = beat >= 1 ? order[Math.min(beat, order.length) - 1] : null;
   const table = sc.ref === "TABLE";
-  const y = where ? PLACE[table ? "table" : "thing"][where].y : 40;
+  const pos = where ? PLACE[table ? "table" : "thing"][where] : null;
+  const y = pos ? pos.y : 40;
   const small = where === "in" && !table;
+  // "בתוך" ו"מאחורי" — החפץ מוסתר חלקית, לכן הרפרנס מצויר מלפנים
+  const front = where === "in" || where === "behind";
   return (
     <>
-      {table ? <div className="stable" /> : <Spr e={sc.ref} x={50} y={57} w={32} h={56} cls={"ref" + (where === "in" ? " front" : "")} />}
-      <Spr e={sc.thing} x={where ? 50 : 15} y={y} w={small ? 12 : 17} h={small ? 22 : 30} cls="fly" />
+      {table ? <div className="stable" /> : <Spr e={sc.ref} x={50} y={57} w={32} h={56} cls={"ref" + (front ? " front" : "")} />}
+      <Spr e={sc.thing} x={pos ? (pos.x == null ? 50 : pos.x) : 15} y={y} w={small ? 12 : 17} h={small ? 22 : 30} cls="fly" />
       <Badge x={where ? 80 : 15} y={where ? 12 : 16} text={where || "?"} tone="big" />
     </>
   );

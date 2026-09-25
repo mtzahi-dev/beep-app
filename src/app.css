@@ -131,6 +131,23 @@ h2 { font-size:23px; font-weight:800; line-height:1.3; letter-spacing:-.2px; }
   color:var(--sub); min-width:96px; }
 .lvllabel.big b { font-size:15px; color:var(--purple-d); margin-top:2px; }
 .adjhint { margin-top:14px; font-size:13px; }
+/* כמה חסר לרמה הבאה */
+.lvlnext { display:flex; flex-direction:column; align-items:center; gap:6px; margin:10px auto 4px; max-width:420px;
+  font-size:14px; font-weight:700; color:var(--sub); text-align:center; }
+.lvlbar { display:block; width:min(260px,80%); height:7px; background:var(--purple-l); border-radius:999px; overflow:hidden; }
+.lvlfill { display:block; height:100%; background:var(--purple); border-radius:999px; transition:width .4s; }
+/* יומן התאמת הרמה באזור ההורים */
+.lvlrow { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; background:var(--soft);
+  border-radius:12px; padding:8px 12px; margin-top:6px; font-size:14px; }
+.lvlrow b { color:var(--purple-d); }
+.lvldots { display:flex; gap:3px; justify-content:center; }
+.lvldot { width:9px; height:9px; border-radius:50%; background:var(--line); }
+.lvldot.ok { background:var(--leaf); }
+.lvldot.no { background:var(--coral); }
+.lvllog { margin:6px 0 0; padding:0; list-style:none; font-size:13.5px; }
+.lvllog li { padding:5px 0; border-bottom:1px solid var(--line); line-height:1.45; }
+.lvllog .up { color:var(--leaf-d); font-weight:800; }
+.lvllog .down { color:var(--coral-d); font-weight:800; }
 
 /* רובוט + סמלים מרחפים */
 .bothero { position:relative; width:212px; margin:0 auto; padding:4px 0; }

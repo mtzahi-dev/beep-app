@@ -26,9 +26,18 @@ const WORDS = [
   ["מפתח", "🔑", 3],
 ];
 const EASY = WORDS.filter((w) => w[2] <= 2 && w[0].length <= 4);
+// הכי קל (רמה 1): מילים קצרות של עד 3 אותיות
+const TINY = EASY.filter((w) => w[0].length <= 3);
+// רמה 1: מאגר קטן ומוכר · רמה 2: המילים הקלות · רמה 3 ומעלה: הכול
+const wordsFor = (lv) => (lv <= 1 ? TINY : lv <= 2 ? EASY : WORDS);
+// אותיות שקל לבלבל ביניהן — ברמה 1 לא שמים אותן כמסיחים זו לצד זו
+const LOOKALIKE = ["בכפ", "דרה", "חתה", "וזן", "טמס", "גנ", "עצ", "שס"];
+const looksLike = (a, b) => LOOKALIKE.some((g) => g.includes(a) && g.includes(b));
 
-const letterOpts = (correct) => {
-  const wrongs = shuffle(LETTERS.filter((l) => l[0] !== correct)).slice(0, 3).map((l) => l[0]);
+// easy = מסיחים שלא דומים לאות הנכונה (לרמה הראשונה)
+const letterOpts = (correct, easy = false) => {
+  const pool = LETTERS.filter((l) => l[0] !== correct && !(easy && looksLike(l[0], correct)));
+  const wrongs = shuffle(pool).slice(0, 3).map((l) => l[0]);
   return shuffle([correct, ...wrongs]);
 };
 
@@ -36,7 +45,7 @@ const G = {};
 
 // האות בגדול על הבמה, והתשובות הן שמות האותיות (או להפך)
 G.letters = (lv) => {
-  const pool = lv <= 2 ? LETTERS.slice(0, 11) : LETTERS;
+  const pool = lv <= 1 ? LETTERS.slice(0, 6) : lv <= 2 ? LETTERS.slice(0, 11) : LETTERS;
   const kind = rnd(0, 2);
   if (kind === 0) {
     const [ch, name] = pick(pool);
@@ -49,16 +58,16 @@ G.letters = (lv) => {
   }
   if (kind === 1) {
     const [ch, name] = pick(pool);
-    const options = letterOpts(ch);
+    const options = letterOpts(ch, lv <= 1);
     return {
       q: `איזו אות היא ${name}?`, options, c: options.indexOf(ch), ex: `${name} נכתבת ככה: ${ch}`,
       scene: { type: "fact", items: ["✏️"], answer: ch },
     };
   }
-  const i = rnd(0, (lv <= 2 ? 9 : LETTERS.length - 2));
+  const i = rnd(0, lv <= 1 ? 4 : lv <= 2 ? 9 : LETTERS.length - 2);
   const a = LETTERS[i][0];
   const b = LETTERS[i + 1][0];
-  const options = letterOpts(b);
+  const options = letterOpts(b, lv <= 1);
   return {
     q: `איזו אות באה אחרי ${a}?`, options, c: options.indexOf(b), ansLabel: `אחרי ${a} באה`,
     ex: LETTERS[i + 2] ? `הסדר: ${a}, ${b}, ${LETTERS[i + 2][0]}` : `הסדר: ${a}, ${b}`,
@@ -68,11 +77,11 @@ G.letters = (lv) => {
 
 // האות שפותחת את המילה שבציור
 G.sounds = (lv) => {
-  const pool = lv <= 2 ? EASY : WORDS;
+  const pool = wordsFor(lv);
   const [w, e] = pick(pool);
   const first = w[0];
   if (rnd(0, 1) === 0) {
-    const options = letterOpts(first);
+    const options = letterOpts(first, lv <= 1);
     return {
       q: `באיזו אות מתחילה המילה ${w}?`, options, c: options.indexOf(first), ex: `${w} ${e}`,
       ansLabel: "המילה מתחילה באות",
@@ -89,7 +98,7 @@ G.sounds = (lv) => {
 
 // מוחאים כפיים לכל הברה וסופרים
 G.syll = (lv) => {
-  const pool = lv <= 2 ? WORDS.filter((w) => w[2] <= 2) : WORDS;
+  const pool = lv <= 1 ? TINY : lv <= 2 ? WORDS.filter((w) => w[2] <= 2) : WORDS;
   const [w, e, n] = pick(pool);
   const nums = [];
   for (const cand of [n, n + 1, n - 1, n + 2, n + 3]) {
@@ -106,7 +115,7 @@ G.syll = (lv) => {
 
 // מילים ראשונות: מילה לתמונה, או אות חסרה במילה
 G.words = (lv) => {
-  const pool = lv <= 2 ? EASY : WORDS;
+  const pool = wordsFor(lv);
   const [w, e] = pick(pool);
   if (rnd(0, 1) === 0) {
     const others = shuffle(pool.filter((x) => x[0] !== w)).slice(0, 3).map((x) => x[0]);
@@ -115,7 +124,7 @@ G.words = (lv) => {
   }
   const i = rnd(0, Math.min(1, w.length - 1));
   const masked = w.slice(0, i) + "_" + w.slice(i + 1);
-  const options = letterOpts(w[i]);
+  const options = letterOpts(w[i], lv <= 1);
   return {
     q: `איזו אות חסרה במילה ${masked}?`, say: `איזו אות חסרה במילה ${w}?`, ansLabel: "האות החסרה היא",
     options, c: options.indexOf(w[i]), ex: `${w} ${e}`,

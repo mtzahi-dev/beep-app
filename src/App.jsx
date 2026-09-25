@@ -6,6 +6,7 @@ import "./app.css";
 import { TOPICS, inGrade, gradeLabel, TOPIC_ALIASES } from "./curriculum/topics.js";
 import { practiceFor, mixPractice } from "./curriculum/practice.js";
 import { reviewPractice } from "./curriculum/review.js";
+import { applyAnswers, setLevel, toNextLevel, recentStats, changeReason, WINDOW } from "./curriculum/adaptive.js";
 import { addToBank } from "./curriculum/banks.js";
 import { mergeLessons } from "./curriculum/lessons.js";
 import { PHOTOS, PHOTO_CREDITS } from "./curriculum/photos.js";
@@ -716,12 +717,13 @@ function migrateProfile(p) {
   if (!p.id) p.id = "u" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const seed = GRADE_SEED[p.grade ?? 3] || 3;
   if (!p.levels) p.levels = { en: p.level || seed, math: seed };
-  if (typeof p.perfect !== "object" || p.perfect === null)
-    p.perfect = { en: p.perfect || 0, math: 0 };
   for (const s of SUBJECT_IDS) {
     if (p.levels[s] == null) p.levels[s] = seed;
-    if (p.perfect[s] == null) p.perfect[s] = 0;
+    p.levels[s] = Math.max(1, Math.min(6, Math.round(p.levels[s]) || seed));
   }
+  // התאמת הרמה: התשובות האחרונות בכל מקצוע ויומן השינויים (ראה curriculum/adaptive.js)
+  if (!p.recent || typeof p.recent !== "object") p.recent = {};
+  if (!Array.isArray(p.levelLog)) p.levelLog = [];
   if (!Array.isArray(p.history)) p.history = [];
   if (p.days == null) p.days = p.totalSessions ? Math.max(1, p.streak || 1) : 0;
   if (!p.seen) p.seen = {};
@@ -1406,6 +1408,12 @@ function lessonsFor(subj, topicId, level) {
   return (LESSONS[subj] && LESSONS[subj][topicId]) || [];
 }
 
+// תרגול שמזיז את הרמה: כל נושא מהכיתה של הילד, וגם התרגולים המעורבים (הפתעה, חזרה, מילים שנלמדו)
+function countsForLevel(t, grade) {
+  if (!t || ["mix", "review", "learned"].includes(t.id)) return true;
+  return inGrade(t, grade);
+}
+
 // התקדמות אמיתית במקצוע (0-100): מה שהילד באמת עשה, לא הרמה שבה התחיל.
 // חצי מהמד = שיעורים מודרכים שהושלמו; חצי = תשובות נכונות שנצברו בתרגול (עד 100)
 function subjectProgress(p, sub) {
@@ -1542,6 +1550,24 @@ function Icon({ name }) {
 
 function Bubble({ children }) {
   return <div className="bubble">{children}</div>;
+}
+
+// כמה חסר לרמה הבאה במקצוע — מוטיבציה שמראה לילד שהתרגול מקדם אותו
+function NextLevelHint({ profile, subj }) {
+  const lvl = profile.levels[subj];
+  const need = toNextLevel(profile, subj);
+  if (need == null) return <p className="lvlnext">🌟 הגעת לרמה הכי גבוהה ב{SUBJECTS[subj].label}!</p>;
+  const next = LEVELS[lvl + 1];
+  return (
+    <div className="lvlnext" role="img" aria-label={`עוד ${need} תשובות נכונות לרמה הבאה`}>
+      <span>
+        🎯 עוד {need === 1 ? "תשובה נכונה אחת" : `${need} תשובות נכונות`} — ועולים לרמת {next.name} {next.emoji}
+      </span>
+      <span className="lvlbar">
+        <span className="lvlfill" style={{ width: Math.round((100 * (WINDOW - need)) / WINDOW) + "%" }} />
+      </span>
+    </div>
+  );
 }
 
 // מילה בודדת: נכנסת באנימציה קצרה; לחיצה מקריאה אותה — באנגלית או בעברית
@@ -1909,7 +1935,8 @@ export default function App() {
             syncFamily(fam, famName, us),
             new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), 2500)),
           ]);
-          us = res.users;
+          // לומדים ממכשיר עם גרסה ישנה — משלימים שדות חסרים (רמות, יומן התאמת רמה)
+          us = res.users.map(migrateProfile);
           await persistUsers(us);
         } catch {}
       }
@@ -1975,10 +2002,9 @@ export default function App() {
   async function finishSignup() {
     sfx.click();
     const seed = GRADE_SEED[grade] || 3;
-    const levels = {}, perfect = {}, seen = {};
+    const levels = {}, seen = {};
     for (const s of SUBJECT_IDS) {
       levels[s] = seed;
-      perfect[s] = 0;
       seen[s] = [];
     }
     const p = {
@@ -1991,13 +2017,14 @@ export default function App() {
       streak: 0,
       lastDay: null,
       sessionsToday: 0,
-      perfect,
       totalSessions: 0,
       days: 0,
       history: [],
       seen,
       lessonsDone: [],
       diagDone: {},
+      recent: {},
+      levelLog: [],
     };
     setProfile(p);
     await saveUser(p);
@@ -2109,9 +2136,12 @@ export default function App() {
     const subj = diag ? diag.subj : subject;
     const secs = collectSecs();
     setProfile((prev) => {
+      const { levels, recent, levelLog } = setLevel(prev, subj, level, "diag");
       const p = {
         ...prev,
-        levels: { ...prev.levels, [subj]: level },
+        levels,
+        recent,
+        levelLog,
         diagDone: { ...(prev.diagDone || {}), [subj]: true },
         activity: mergeActivity(prev.activity, secs),
       };
@@ -2246,7 +2276,9 @@ export default function App() {
     const l = lesson;
     if (!l) return;
     if (l.i + 1 >= l.qs.length) {
-      finishLesson(l.correct, l.qs.length);
+      // נכון/לא נכון לכל שאלה לפי הסדר — זה מה שמזיז את הרמה
+      const answers = l.qs.map((_, i) => !!(l.log && l.log[i] && l.log[i].phase === "right"));
+      finishLesson(l.correct, l.qs.length, answers);
       return;
     }
     setLesson({ ...l, i: l.i + 1, ...stepState(l.log, l.i + 1) });
@@ -2260,11 +2292,12 @@ export default function App() {
     setLesson({ ...l, i: l.i - 1, ...stepState(l.log, l.i - 1) });
   }
 
-  function finishLesson(correct, total = 5) {
+  function finishLesson(correct, total = 5, answers = null) {
     const today = todayStr();
     const secs = collectSecs();
+    const at = Date.now();
     setProfile((prev) => {
-      const p = { ...prev, levels: { ...prev.levels }, perfect: { ...prev.perfect } };
+      const p = { ...prev, levels: { ...prev.levels } };
       const earned = correct + (correct === total ? 2 : 0);
       p.stars += earned;
       p.totalSessions += 1;
@@ -2279,22 +2312,24 @@ export default function App() {
       // יומן פרקים — הבסיס לדוח ההורים ולהמלצות
       p.history = [
         ...(p.history || []),
-        { at: Date.now(), subject, topic: topic ? topic.id : "mix", correct, total, level: p.levels[subject] },
+        { at, subject, topic: topic ? topic.id : "mix", correct, total, level: p.levels[subject] },
       ].slice(-100);
-      if (correct === 5) {
-        p.perfect[subject] += 1;
-        if (p.perfect[subject] >= 2 && p.levels[subject] < 6) {
-          p.levels[subject] += 1;
-          p.perfect[subject] = 0;
-          p.leveledUp = true;
-        }
-      } else {
-        p.perfect[subject] = 0;
-        if (correct <= 1 && p.levels[subject] > 1) p.levels[subject] -= 1; // התאמה שקטה של הקצב
+      // התאמת הרמה לפי התשובות האחרונות (curriculum/adaptive.js). נושא מכיתה אחרת לא מזיז את הרמה:
+      // ילד שמנסה נושא של כיתה גבוהה לא צריך לרדת רמה בנושאים של הכיתה שלו.
+      p.leveledUp = null;
+      if (countsForLevel(topic, p.grade)) {
+        const ans = answers || Array.from({ length: total }, (_, i) => i < correct);
+        const { levels, recent, levelLog, change } = applyAnswers(p, subject, ans, at);
+        p.levels = levels;
+        p.recent = recent;
+        p.levelLog = levelLog;
+        // ירידת רמה שקטה — הילד רואה רק עליות; ההורים רואים הכול ביומן
+        if (change && change.to > change.from) p.leveledUp = change;
       }
       p.activity = mergeActivity(prev.activity, secs);
       p.lastEarned = earned;
       p.lastCorrect = correct;
+      p.lastTotal = total;
       saveUser(p);
       return p;
     });
@@ -2323,7 +2358,7 @@ export default function App() {
     clearTimeout(famTimer.current);
     famTimer.current = setTimeout(() => {
       syncFamily(familyCode, familyName, list)
-        .then(({ users: merged }) => { setUsers(merged); persistUsers(merged); })
+        .then(({ users: merged }) => { setUsers(merged.map(migrateProfile)); persistUsers(merged); })
         .catch(() => {});
     }, 4000);
   }
@@ -2339,7 +2374,7 @@ export default function App() {
       setFamilyName(name);
       await storSet(FAMILY_KEY, code);
       await storSet(FAMILY_NAME_KEY, name);
-      setUsers(merged);
+      setUsers(merged.map(migrateProfile));
       await persistUsers(merged);
       setFamilyMsg("הקוד מוכן! הקלידו אותו באזור ההורים במכשיר השני.");
     } catch {
@@ -2358,7 +2393,7 @@ export default function App() {
       setFamilyName(name);
       await storSet(FAMILY_KEY, code);
       await storSet(FAMILY_NAME_KEY, name);
-      setUsers(merged);
+      setUsers(merged.map(migrateProfile));
       await persistUsers(merged);
       setCodeInput("");
       setFamilyMsg(`מחובר! ${merged.length} לומדים במכשיר הזה.`);
@@ -2384,7 +2419,7 @@ export default function App() {
       const saved = name || next;
       setFamilyName(saved);
       await storSet(FAMILY_NAME_KEY, saved);
-      setUsers(merged);
+      setUsers(merged.map(migrateProfile));
       await persistUsers(merged);
       setNameInput("");
       setFamilyMsg("שם המשפחה נשמר. במכשירים האחרים הקלידו בדיוק את אותו שם.");
@@ -2410,7 +2445,7 @@ export default function App() {
       setFamilyName(name);
       await storSet(FAMILY_KEY, code);
       await storSet(FAMILY_NAME_KEY, name);
-      setUsers(merged);
+      setUsers(merged.map(migrateProfile));
       await persistUsers(merged);
       setCodeInput("");
       setFamilyMsg("הקוד שלכם מוכן! סרקו את הברקוד או הקלידו אותו במכשיר השני.");
@@ -2424,7 +2459,7 @@ export default function App() {
     setFamilyMsg("מסנכרן...");
     try {
       const { users: merged } = await syncFamily(familyCode, familyName, users);
-      setUsers(merged);
+      setUsers(merged.map(migrateProfile));
       await persistUsers(merged);
       setFamilyMsg(`מעודכן — ${merged.length} לומדים.`);
     } catch {
@@ -2565,7 +2600,8 @@ export default function App() {
     const today = todayStr();
     const secs = collectSecs();
     setProfile((prev) => {
-      const p = { ...prev, levels: { ...prev.levels }, perfect: { ...prev.perfect } };
+      // שיעור מודרך מלמד ולא מודד — הרמה מתעדכנת במבחן הידע שאחריו ובתרגולים
+      const p = { ...prev, levels: { ...prev.levels } };
       const earned = c.correct + 3; // בונוס על השלמת שיעור
       p.stars += earned;
       p.totalSessions += 1;
@@ -2601,12 +2637,15 @@ export default function App() {
   }
 
   // כוונון רמה ידני — למקצוע אחד או לכולם (מהדף הראשי)
+  // (נרשם ביומן ההורים ומאפס את מדידת הרמה במקצוע — מהרמה החדשה מודדים מחדש)
   async function adjustLevels(delta, subj = null) {
     sfx.click();
-    const levels = { ...profile.levels };
+    let p = { ...profile };
     const keys = subj ? [subj] : SUBJECT_IDS;
-    for (const k of keys) levels[k] = Math.max(1, Math.min(6, levels[k] + delta));
-    const p = { ...profile, levels };
+    for (const k of keys) {
+      const { levels, recent, levelLog } = setLevel(p, k, p.levels[k] + delta, "manual");
+      p = { ...p, levels, recent, levelLog };
+    }
     setProfile(p);
     await saveUser(p);
   }
@@ -3061,6 +3100,12 @@ export default function App() {
       " · " +
       new Date(ms).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
     const pctCls = (v) => (v >= 80 ? "good" : v >= 60 ? "mid" : "low");
+    // המקצועות שהילד רואה (אותיות ומילים — רק בכיתה א')
+    const kidSubjects = SUBJECT_IDS.filter((sid) => {
+      const g = SUBJECTS[sid].grades;
+      return !g || kid.grade == null || (kid.grade >= g[0] && kid.grade <= g[1]);
+    });
+    const levelLog = (kid.levelLog || []).slice(-8).reverse();
     return wrap(
       <div className="card">
         <button className="corner" onClick={exitParents} aria-label="יציאה"><Icon name="home" /></button>
@@ -3085,7 +3130,7 @@ export default function App() {
             <div className="pbox">ימי למידה<b>{kid.days || 0}</b></div>
             <div className="pbox">הצלחה כוללת<b>{avg == null ? "—" : avg + "%"}</b></div>
             <div className="pbox">רצף נוכחי<b>{kid.streak} ימים</b></div>
-            {SUBJECT_IDS.map((sid) => (
+            {kidSubjects.map((sid) => (
               <div className="pbox" key={sid}>
                 {SUBJECTS[sid].label}
                 <b>{LEVELS[kid.levels[sid]].name} {LEVELS[kid.levels[sid]].emoji}</b>
@@ -3093,6 +3138,43 @@ export default function App() {
             ))}
           </div>
           <p className="sub">🕐 שימוש אחרון: {last ? fmt(last.at) : "עדיין לא הושלם שיעור"}</p>
+        </div>
+        <div className="psec">
+          <h3>📈 רמת הקושי מתעדכנת לבד</h3>
+          <p className="sub">
+            אחרי כל תרגול בִּיפּ בודק את {WINDOW} התשובות האחרונות בכל מקצוע: 9 נכונות — עולים רמה;
+            5 או פחות (או רק אחת מ-5 האחרונות) — יורדים רמה, כדי שהתרגול לא יתסכל. אחרי ירידה עולים שוב רק
+            אחרי 10 נכונות מתוך 10, כדי שהרמה לא תקפוץ הלוך וחזור. נושא מכיתה אחרת לא משנה את הרמה.
+          </p>
+          {kidSubjects.map((sid) => {
+            const st = recentStats(kid, sid);
+            return (
+              <div className="lvlrow" key={sid}>
+                <span>{SUBJECTS[sid].emoji} {SUBJECTS[sid].label}</span>
+                <span className="lvldots" role="img" aria-label={`${st.c} נכונות מתוך ${st.t} התשובות האחרונות`}>
+                  {Array.from({ length: WINDOW }, (_, i) => (
+                    <span key={i} className={"lvldot" + (i >= st.t ? "" : st.list[i] ? " ok" : " no")} />
+                  ))}
+                </span>
+                <b>{LEVELS[kid.levels[sid]].emoji} {LEVELS[kid.levels[sid]].name}</b>
+              </div>
+            );
+          })}
+          {levelLog.length > 0 ? (
+            <ul className="lvllog">
+              {levelLog.map((ch, i) => (
+                <li key={i}>
+                  {fmt(ch.at)} · {SUBJECTS[ch.subj] ? SUBJECTS[ch.subj].label : ch.subj}:{" "}
+                  <span className={ch.to > ch.from ? "up" : ch.to < ch.from ? "down" : ""}>
+                    {ch.to === ch.from ? `רמת ${LEVELS[ch.to].name}` : `${LEVELS[ch.from].name} ← ${LEVELS[ch.to].name}`}
+                  </span>{" "}
+                  ({changeReason(ch)})
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="sub">עדיין לא היו שינויי רמה — כשיהיו, הם יופיעו כאן עם הסיבה.</p>
+          )}
         </div>
         {rows.length > 0 && (
           <div className="psec">
@@ -3455,6 +3537,7 @@ export default function App() {
             קשה יותר ➕
           </button>
         </div>
+        <NextLevelHint profile={profile} subj={subject} />
         <div className="topicgrid">
           {opts.map((t, i) => {
             const s = tstat[t.id];
@@ -3762,8 +3845,8 @@ export default function App() {
   // --- סיום פרק ---
 
   if (screen === "done" && profile) {
-    const leveled = profile.leveledUp;
-    if (leveled) profile.leveledUp = false;
+    // עלייה ברמה בפרק הזה (נקבע מחדש בכל סיום פרק; ירידה שקטה לא מוצגת לילד)
+    const up = profile.leveledUp && typeof profile.leveledUp === "object" && profile.leveledUp.subj === subject ? profile.leveledUp : null;
     return wrap(
       <div className="card center">
         <button className="corner" onClick={goHome} aria-label="לדף הבית"><Icon name="home" /></button>
@@ -3773,12 +3856,18 @@ export default function App() {
         <div className="bigstars">{"⭐".repeat(Math.max(1, Math.min(7, profile.lastEarned)))}</div>
         <p className="sub">
           ענית נכון על {profile.lastCorrect} מתוך {profile.lastTotal || 5} והרווחת {profile.lastEarned} כוכבים!
-          {profile.lastCorrect === (profile.lastTotal || 5) ? " פרק מושלם! 🤩" : " התקדמות מעולה!"}
+          {profile.lastCorrect === (profile.lastTotal || 5)
+            ? " פרק מושלם! 🤩"
+            : profile.lastCorrect <= 1
+              ? " פרק לא פשוט — ננסה עוד אחד 💪"
+              : " התקדמות מעולה!"}
         </p>
-        {leveled && (
+        {up ? (
           <div className="explain" style={{ background: "#EAFBF2", borderColor: "#9FE3C3" }}>
-            🚀 עלית רמה ב{SUBJECTS[subject].label}! מעכשיו אתה ברמת {LEVELS[profile.levels[subject]].name} {LEVELS[profile.levels[subject]].emoji}
+            🚀 עלית רמה ב{SUBJECTS[subject].label}! מעכשיו התרגילים ברמת {LEVELS[up.to].name} {LEVELS[up.to].emoji}
           </div>
+        ) : (
+          <NextLevelHint profile={profile} subj={subject} />
         )}
         <button className="btn green" onClick={() => { sfx.click(); setScreen("topics"); }}>
           עוד פרק! 🚀
